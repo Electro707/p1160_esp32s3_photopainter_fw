@@ -1,0 +1,100 @@
+openapi: 3.1.1
+info:
+  title: ESP32S3 PhotoPainter Open Firmware
+  version: 0.1.0
+  description: An open firmware implementation for the Waveshare ESP32S3 PhotoPainter
+
+components:
+  schemas:
+    OkResponse:
+      type: object
+      properties:
+        stat:
+          type: string
+          const: "ok"
+
+paths:
+  /api/v1/version:
+    get:
+      operationId: getVersion
+      summary: Gets the running software version
+      responses:
+        "200":
+          description: Version information
+          content:
+            application/json:
+              schema:
+                properties:
+                  stat:
+                    type: string
+                    const: "ok"
+                  version:
+                    type: string
+                    description: "The firmware version"
+                examples:
+                  - stat: "ok"
+                    version: "ESP32S3 PhotoPainer Open Firmware Rev 0.1.0"
+
+  /api/v1/coffee:
+    get:
+      operationId: getCoffee
+      summary: Tea Time!
+      responses:
+        "418":
+          description: I'm a teapot
+          content:
+            application/json:
+              schema:
+                properties:
+                  stat:
+                    type: string
+                    const: "I'm a teapot"
+
+  /api/v1/fbRaw:
+    post:
+      operationId: postFbRaw
+      summary: To upload a raw framebuffer to the device and update the display
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+              description: |
+                A 19200 byte payload which is the frame buffer
+                Each byte of the frame buffer is 2 pixels. Each pixel can have the values
+                [0, 1, 2, 3, 5, or]
+      responses:
+        "200":
+          description: Upload accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stat:
+                    description: A description of the error that occurred
+                    type: string
+                examples:
+                  - stat: "Frame buffer size invalid"
+        "500":
+          description: Internal Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stat:
+                    description: A description of the error that occurred
+                    type: string
+                examples: 
+                  - stat: "Could not take frame buffer mutex"
+                  - stat: "Frame buffer overflow"
+                
