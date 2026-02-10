@@ -94,7 +94,15 @@ void mcuInit(void){
     ESP_ERROR_CHECK(i2c_master_bus_add_device(i2cHandle, &dev_cfg, &i2cDevPmic));
 
     // init nvs flash, which is used for some wifi stuff
-    ESP_ERROR_CHECK(nvs_flash_init());
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        // NVS partition was truncated and needs to be erased
+        // Retry nvs_flash_init
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(err);
+
 }
 
 void app_main(void)

@@ -1,7 +1,7 @@
 openapi: 3.1.1
 info:
   title: ESP32S3 PhotoPainter Open Firmware
-  version: 0.1.0
+  version: 1.0-dev
   description: An open firmware implementation for the Waveshare ESP32S3 PhotoPainter
 
 components:

@@ -7,8 +7,8 @@
 #include "esp_wifi.h"
 
 typedef enum{
-    WIFI_CONNECTED_BIT = BIT0,
-    WIFI_FAIL_BIT      = BIT1,
+    WIFI_CONNECTED_BIT      = BIT0,
+    WIFI_FAIL_BIT           = BIT1,
 }wifiEventsBits_e;
 
 void wifiInit(void);

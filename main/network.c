@@ -2,52 +2,40 @@
 #include <string.h>
 #include "esp_wifi.h"
 #include "esp_event.h"
+#include "esp_mac.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "network.h"
+#include "nvs_flash.h"
 #include "esp_http_server.h"
 #include "esp_heap_caps.h"
+#include <cJSON.h>
+
 #include "common.h"
 #include "eink.h"
 #include "main.h"
 
 /* FreeRTOS event group to signal when we are connected*/
 EventGroupHandle_t wifiEvents;
+wifi_config_t wifiConfig;
+static nvs_handle_t wifiNvsHandle;
+static bool isNewWifiConf;
 
 static const char *TAG = "wifi";
+static const char *NVS_ID = "wifi";
 
-#if CONFIG_ESP_STATION_EXAMPLE_WPA3_SAE_PWE_HUNT_AND_PECK
-#define ESP_WIFI_SAE_MODE WPA3_SAE_PWE_HUNT_AND_PECK
-#define WIFI_H2E_IDENTIFIER ""
-#elif CONFIG_ESP_STATION_EXAMPLE_WPA3_SAE_PWE_HASH_TO_ELEMENT
-#define ESP_WIFI_SAE_MODE WPA3_SAE_PWE_HASH_TO_ELEMENT
-#define WIFI_H2E_IDENTIFIER CONFIG_ESP_WIFI_PW_ID
-#elif CONFIG_ESP_STATION_EXAMPLE_WPA3_SAE_PWE_BOTH
-#define ESP_WIFI_SAE_MODE WPA3_SAE_PWE_BOTH
-#define WIFI_H2E_IDENTIFIER CONFIG_ESP_WIFI_PW_ID
-#endif
+struct{
+    char staSsid[MAX_WIFI_SSID_LEN];
+    char staPass[MAX_WIFI_SSID_LEN];
+    wifi_auth_mode_t authMode;
+}wifiNvmConf;
 
-#if CONFIG_ESP_WIFI_AUTH_OPEN
-#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_OPEN
-#elif CONFIG_ESP_WIFI_AUTH_WEP
-#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WEP
-#elif CONFIG_ESP_WIFI_AUTH_WPA_PSK
-#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA_PSK
-#elif CONFIG_ESP_WIFI_AUTH_WPA2_PSK
-#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA2_PSK
-#elif CONFIG_ESP_WIFI_AUTH_WPA_WPA2_PSK
-#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA_WPA2_PSK
-#elif CONFIG_ESP_WIFI_AUTH_WPA3_PSK
-#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA3_PSK
-#elif CONFIG_ESP_WIFI_AUTH_WPA2_WPA3_PSK
-#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA2_WPA3_PSK
-#elif CONFIG_ESP_WIFI_AUTH_WAPI_PSK
-#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WAPI_PSK
-#endif
-
+void wifiStartAP(void);
+void wifiStartSTA(void *arg);
+void saveWifiNvmConf(void);
 
 /********** URI match handlers **********/
-static esp_err_t handleUriGetVersion(httpd_req_t* req){
+static esp_err_t handleUriGetVersion(httpd_req_t *req){
     char tmp[128];
     httpd_resp_set_type(req, "application/json");
     snprintf(tmp, 128, "{\"stat\": \"ok\", \"version\": \"%s Rev %s\"}", FW_NAME, FW_REV);
@@ -55,11 +43,115 @@ static esp_err_t handleUriGetVersion(httpd_req_t* req){
     return ESP_OK;
 }
 
-static esp_err_t handleUriGetCoffee(httpd_req_t* req){
+static esp_err_t handleUriGetCoffee(httpd_req_t *req){
     httpd_resp_set_status(req, "418 I'm a teapot");
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"stat\": \"I'm a teapot\"}");
     return ESP_OK;
+}
+
+static esp_err_t handleUriGetWifiInfo(httpd_req_t *req){
+    wifi_mode_t wifiM;
+    esp_err_t ret;
+    char wifiModeStr[32];
+    char *jsonPrint;
+
+    esp_wifi_get_mode(&wifiM);
+    switch(wifiM){
+        case WIFI_MODE_NULL: strcpy(wifiModeStr, "null"); break;
+        case WIFI_MODE_STA: strcpy(wifiModeStr, "sta"); break;
+        case WIFI_MODE_AP: strcpy(wifiModeStr, "ap"); break;
+        case WIFI_MODE_APSTA: strcpy(wifiModeStr, "apsta"); break;
+        case WIFI_MODE_NAN: strcpy(wifiModeStr, "nan"); break;
+        default: strcpy(wifiModeStr, "error"); break;
+    }
+
+    cJSON *jRoot = cJSON_CreateObject();
+    cJSON_AddStringToObject(jRoot, "stat", "ok");
+    cJSON_AddStringToObject(jRoot, "currentMode", wifiModeStr);
+    cJSON_AddStringToObject(jRoot, "staSSID", (char *)wifiConfig.sta.ssid);
+    cJSON_AddStringToObject(jRoot, "staPass", (char *)wifiConfig.sta.password);
+    
+    httpd_resp_set_type(req, "application/json");
+    jsonPrint = cJSON_PrintUnformatted(jRoot);
+    if(jsonPrint == NULL){
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"CJSON Fail\"}");
+        ret = ESP_FAIL;
+    } else {
+        httpd_resp_sendstr(req, jsonPrint);
+        ret = ESP_OK;
+    }
+
+    cJSON_Delete(jRoot);
+    return ret;
+}
+
+static esp_err_t handleUriPostWifiSta(httpd_req_t *req){
+    esp_err_t ret;
+    char *recvBuf;
+    char responseBuff[128];
+
+    cJSON *jRoot = NULL;
+    const cJSON *jSSID = NULL;
+    const cJSON *jPass = NULL;
+
+    httpd_resp_set_type(req, "application/json");
+
+    int remaining = req->content_len;   // total bytes expected
+    recvBuf = malloc(req->content_len);
+    int r = httpd_req_recv(req, (char*)recvBuf, remaining);
+    if(r < 0){
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"Error while receiving info\"}");
+        ret = ESP_FAIL;
+        goto end;
+    }
+    jRoot = cJSON_Parse(recvBuf);
+
+    if(jRoot == NULL){
+        const char *error_ptr = cJSON_GetErrorPtr();
+        if(error_ptr != NULL){
+            snprintf(responseBuff, 128, "{\"stat\": \"JSON invalid: %s\"}", error_ptr);
+        } else {
+            snprintf(responseBuff, 128, "{\"stat\": \"JSON invalid: unknown\"}");
+        }
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, responseBuff);
+        ret = ESP_FAIL;
+        goto end;
+    }
+    jSSID = cJSON_GetObjectItem(jRoot, "ssid");
+    if (!cJSON_IsString(jSSID) || (jSSID->valuestring == NULL)){
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"JSON invalid: ssid not a string\"}");
+        ret = ESP_FAIL;
+        goto end;
+    }
+
+    jPass = cJSON_GetObjectItem(jRoot, "pass");
+    if (!cJSON_IsString(jPass) || (jPass->valuestring == NULL)){
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"JSON invalid: password not a string\"}");
+        ret = ESP_FAIL;
+        goto end;
+    }
+
+    strcpy((char *)wifiConfig.sta.ssid, jSSID->valuestring);
+    strcpy((char *)wifiConfig.sta.password, jPass->valuestring);
+    // todo: for now just allow psk, allow more auth options
+    if(strlen((char *)wifiConfig.sta.password) == 0){
+        wifiConfig.sta.threshold.authmode = WIFI_AUTH_OPEN;
+    } else {
+        wifiConfig.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+    }
+
+    httpd_resp_sendstr(req, "{\"stat\": \"ok\"}");
+    ESP_LOGD(TAG, "Get info for STA mode, connecting to STA");
+    isNewWifiConf = true;
+    httpd_queue_work(req->handle, wifiStartSTA, NULL);
+    
+    ret = ESP_OK;
+
+end:
+    cJSON_Delete(jRoot);
+    free(recvBuf);
+    return ret;
 }
 
 static esp_err_t handleUriPostImageRaw(httpd_req_t *req){
@@ -122,35 +214,127 @@ static void wifiIpEventHandler(void* arg, esp_event_base_t event_base,
 {
     static int s_retry_num = 0;
 
-    if(event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START){
-        esp_wifi_connect();
-    }
-    else if(event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED){
-        if(s_retry_num < CONFIG_ESP_MAXIMUM_RETRY){
-            esp_wifi_connect();
-            s_retry_num++;
-            ESP_LOGI(TAG, "retry to connect to the AP");
+    if(event_base == WIFI_EVENT){
+        switch(event_id){
+            /**** STA Stuff */
+            case WIFI_EVENT_STA_START:
+                esp_wifi_connect();
+                break;
+            case WIFI_EVENT_STA_CONNECTED:
+                ESP_LOGI(TAG, "connected to the AP success");
+                if(isNewWifiConf){
+                    isNewWifiConf = false;
+                    saveWifiNvmConf();
+                }
+                break;
+            case WIFI_EVENT_STA_DISCONNECTED:
+                ESP_LOGI(TAG,"connect to the AP fail");
+                if(s_retry_num < CONFIG_ESP_MAXIMUM_RETRY){
+                    esp_wifi_connect();
+                    s_retry_num++;
+                    ESP_LOGI(TAG, "retry to connect to the AP");
+                }
+                else{
+                    xEventGroupSetBits(wifiEvents, WIFI_FAIL_BIT);
+                    ESP_LOGI(TAG, "Failed to connect over STA, starting AP Mode");
+                    wifiStartAP();
+                }
+                break;
+            /**** AP Stuff */
+            case WIFI_EVENT_AP_STACONNECTED:
+                wifi_event_ap_staconnected_t* eventConn = (wifi_event_ap_staconnected_t*) event_data;
+                ESP_LOGI(TAG, "station "MACSTR" join, AID=%d", MAC2STR(eventConn->mac), eventConn->aid);
+                break;
+            case WIFI_EVENT_AP_STADISCONNECTED:
+                wifi_event_ap_stadisconnected_t* eventDisconn = (wifi_event_ap_stadisconnected_t*) event_data;
+                ESP_LOGI(TAG, "station "MACSTR" leave, AID=%d, reason=%d", MAC2STR(eventDisconn->mac), eventDisconn->aid, eventDisconn->reason);
+                break;
+            default:
+                break;
         }
-        else{
-            xEventGroupSetBits(wifiEvents, WIFI_FAIL_BIT);
+    }
+    else if(event_base == IP_EVENT){
+        switch(event_id){
+            case IP_EVENT_STA_GOT_IP:
+                ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
+                ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
+                s_retry_num = 0;
+                xEventGroupSetBits(wifiEvents, WIFI_CONNECTED_BIT);
+                break;
+            default:
+                break;
         }
-        ESP_LOGI(TAG,"connect to the AP fail");
     }
-    else if(event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP){
-        ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
-        ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
-        s_retry_num = 0;
-        xEventGroupSetBits(wifiEvents, WIFI_CONNECTED_BIT);
+}
+
+void wifiStartAP(void){
+    ESP_ERROR_CHECK(esp_wifi_stop());
+
+    strcpy((char *)wifiConfig.ap.ssid, CONFIG_ESP_AP_WIFI_SSID);
+    strcpy((char *)wifiConfig.ap.password, CONFIG_ESP_AP_WIFI_PASSWORD);
+    wifiConfig.ap.channel = CONFIG_ESP_AP_WIFI_CH;
+    wifiConfig.ap.max_connection = CONFIG_ESP_AP_WIFI_MAX_CONN;
+    if(strlen((char *)wifiConfig.ap.password) == 0){
+        wifiConfig.ap.authmode = WIFI_AUTH_OPEN;
+    } else {
+        wifiConfig.ap.authmode = WIFI_AUTH_WPA2_PSK;
     }
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP) );
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifiConfig) );
+    ESP_ERROR_CHECK(esp_wifi_start());
+}
+
+void wifiStartSTA(void *arg){
+    ESP_ERROR_CHECK(esp_wifi_stop());
+
+    wifiConfig.sta.sae_pwe_h2e = WPA3_SAE_PWE_HUNT_AND_PECK;
+    wifiConfig.sta.sae_h2e_identifier[0] = '\x00';
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifiConfig) );
+    ESP_ERROR_CHECK(esp_wifi_start());
+}
+
+void saveWifiNvmConf(void){
+    ESP_LOGD(TAG, "saving wifi info");
+    nvs_set_str(wifiNvsHandle, "ssid", (char *)wifiConfig.sta.ssid);
+    nvs_set_str(wifiNvsHandle, "pass", (char *)wifiConfig.sta.password);
+    nvs_set_u32(wifiNvsHandle, "auth", wifiConfig.sta.threshold.authmode);
+    nvs_commit(wifiNvsHandle);
+}
+
+/**
+ * Loads information about WiFi from flash. Returns either 0 for success, or -1 for failed (should load default after)
+ */
+int wifiLoadNvmConf(void){
+    u32 authMode;
+    size_t maxStrLen = MAX_WIFI_SSID_LEN;
+
+    if(nvs_get_str(wifiNvsHandle, "ssid", (char *)wifiConfig.sta.ssid, &maxStrLen) != ESP_OK){
+        return -1;
+    }
+    if(nvs_get_str(wifiNvsHandle, "pass", (char *)wifiConfig.sta.password, &maxStrLen) != ESP_OK){
+        return -1;
+    }
+    if(nvs_get_u32(wifiNvsHandle, "auth", &authMode) != ESP_OK){
+        return -1;
+    }
+    wifiConfig.sta.threshold.authmode = authMode;
+
+    return 0;
 }
 
 /********** init functions **********/
 void wifiInit(void){
     wifiEvents = xEventGroupCreate();
 
+    ESP_ERROR_CHECK(nvs_open(NVS_ID, NVS_READWRITE, &wifiNvsHandle));
+
     // init tcp ip stack
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_create_default_wifi_ap();
     esp_netif_create_default_wifi_sta();
 
     // todo: support reading wifi ssid and password from nvs later on
@@ -170,28 +354,16 @@ void wifiInit(void){
                                                         &wifiIpEventHandler,
                                                         NULL,
                                                         &instance_got_ip));
+    
 
-    wifi_config_t wifiConfig = {
-        .sta = {
-            .ssid = CONFIG_ESP_WIFI_SSID,
-            .password = CONFIG_ESP_WIFI_PASSWORD,
-            /* Authmode threshold resets to WPA2 as default if password matches WPA2 standards (password len => 8).
-             * If you want to connect the device to deprecated WEP/WPA networks, Please set the threshold value
-             * to WIFI_AUTH_WEP/WIFI_AUTH_WPA_PSK and set the password with length and format matching to
-             * WIFI_AUTH_WEP/WIFI_AUTH_WPA_PSK standards.
-             */
-            .threshold.authmode = ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD,
-            .sae_pwe_h2e = ESP_WIFI_SAE_MODE,
-            .sae_h2e_identifier = WIFI_H2E_IDENTIFIER,
-        },
-    };
-    if(strlen(CONFIG_ESP_WIFI_PASSWORD) == 0){
-        wifiConfig.ap.authmode = WIFI_AUTH_OPEN;
+    int nvmStat = wifiLoadNvmConf();
+    if(nvmStat){
+        ESP_LOGW(TAG, "Unable to load NVM flash, setting as as AP");
+        wifiStartAP();
     }
-
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifiConfig) );
-    ESP_ERROR_CHECK(esp_wifi_start());
+    else{
+        wifiStartSTA(NULL);
+    }
 }
 
 
@@ -215,10 +387,19 @@ void startHttpServer(void){
     uriMatch.uri = "/api/v1/coffee";
     httpd_register_uri_handler(server, &uriMatch);
 
+    uriMatch.handler = handleUriGetWifiInfo;
+    uriMatch.uri = "/api/v1/wifiInfo";
+    httpd_register_uri_handler(server, &uriMatch);
+
     /**** POST commands */
     uriMatch.method = HTTP_POST;
     uriMatch.handler = handleUriPostImageRaw;
     uriMatch.uri = "/api/v1/fbRaw";
     httpd_register_uri_handler(server, &uriMatch);
+
+    uriMatch.handler = handleUriPostWifiSta;
+    uriMatch.uri = "/api/v1/setWifiInfo";
+    httpd_register_uri_handler(server, &uriMatch);
+    
 
 }
