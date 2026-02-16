@@ -4,19 +4,39 @@ info:
   version: 1.0-dev
   description: An open firmware implementation for the Waveshare ESP32S3 PhotoPainter
 
+servers:
+  - url: http://{hostName}/api/v1
+    variables:
+      hostName:
+        default: "192.168.4.1"
+        description: "The host IP of the esp32"
+
 components:
-  schemas:
-    OkResponse:
-      type: object
-      properties:
-        stat:
-          type: string
-          const: "ok"
+  responses:
+    PostOKResponse:
+      description: "A normal 200 code response from POST requests"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              stat:
+                type: string
+                const: "ok"
+    Generic404Error:
+      description: "A generic 404 error code when the URL is not found"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              stat:
+                type: string
+                const: "Not Found"
 
 paths:
-  /api/v1/version:
+  /version:
     get:
-      operationId: getVersion
       summary: Gets the running software version
       responses:
         "200":
@@ -35,9 +55,8 @@ paths:
                   - stat: "ok"
                     version: "ESP32S3 PhotoPainer Open Firmware Rev 0.1.0"
 
-  /api/v1/coffee:
+  /coffee:
     get:
-      operationId: getCoffee
       summary: Tea Time!
       responses:
         "418":
@@ -50,9 +69,8 @@ paths:
                     type: string
                     const: "I'm a teapot"
 
-  /api/v1/fbRaw:
+  /dispFbRaw:
     post:
-      operationId: postFbRaw
       summary: To upload a raw framebuffer to the device and update the display
       requestBody:
         required: true
@@ -62,16 +80,12 @@ paths:
               type: string
               format: binary
               description: |
-                A 19200 byte payload which is the frame buffer
+                A 192000 byte payload which is the frame buffer
                 Each byte of the frame buffer is 2 pixels. Each pixel can have the values
                 [0, 1, 2, 3, 5, or]
       responses:
         "200":
-          description: Upload accepted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OkResponse'
+          $ref: '#/components/responses/PostOKResponse'
         "400":
           description: Bad request
           content:
@@ -97,4 +111,100 @@ paths:
                 examples: 
                   - stat: "Could not take frame buffer mutex"
                   - stat: "Frame buffer overflow"
-                
+  /dispCheckPattern:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                checkSize:
+                  type: integer
+                  description: The check size pattern as a power of 2. So 2 would be a checker size of 4 pixels, 3 would be 8pixels, etc
+              examples:
+                - checkSize: 8
+      responses:
+        "200":
+          $ref: '#/components/responses/PostOKResponse'
+  
+  /wifiInfo:
+    get:
+      responses:
+        "200":
+          description: Wifi information that is currently connected
+          content:
+            application/json:
+              schema:
+                properties:
+                  stat:
+                    type: string
+                    const: "ok"
+                  currentMode:
+                    type: string
+                    description: "The current wifi connection mode"
+                    const:
+                      - "null"
+                      - "sta"
+                      - "ap"
+                      - "apsta"
+                  staSSID:
+                    type: string
+                    description: "The saved WiFi ssid when the device is in station mode"
+                  staPass:
+                    type: string
+                    description: "The saved WiFi password when the device is in station mode"
+                examples:
+                  - stat: "ok"
+                    currentMode: "sta"
+                    staSSID: "My Wifi Network"
+                    staPass: "very safe pass"
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ssid:
+                  type: string
+                  description: "The SSID of WiFi network"
+                pass:
+                  type: string
+                  description: "The password of WiFi network"
+      responses:
+        "200":
+          $ref: '#/components/responses/PostOKResponse'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stat:
+                    description: A description of the error that occurred
+                    type: string
+                examples:
+                  - stat: "Frame buffer size invalid"
+        "500":
+          description: Internal Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stat:
+                    description: A description of the error that occurred
+                    type: string
+                examples: 
+                  - stat: "Could not take frame buffer mutex"
+                  - stat: "Frame buffer overflow"
+  /wifiConnectSta:
+    post:
+      description: "Set this to connect to the WiFi network stored"
+      responses:
+        "200":
+          $ref: '#/components/responses/PostOKResponse'

@@ -121,14 +121,6 @@ void app_main(void)
 
     xTaskCreatePinnedToCore(dispFreeRtosUpdateLoop, "display", 4096, NULL, 5,
                             &dispTask_h, 0);
-
-    // dispFillColor(EPD_COLOR_BLUE);
-    // dispCheckerPattern(5);
-    // dispUpdate();
-
-    // for(EVER){
-
-    // }
 }
 
 void dispTrigUpdate(void){

@@ -23,8 +23,7 @@
 
 #define I2C_ADDR_AXP2101    0x34
 
-#define MAX_WIFI_SSID_LEN       32
-#define MAX_WIFI_PASS_LEN       32
+#define MAX_WIFI_INFO_STRLEN       32
 
 ////////// Other defines
 #define EVER    ;;

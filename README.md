@@ -6,7 +6,11 @@ This projects attempts to make an open sane firmware for the Waveshare Photopain
 - [Waveshare ESP-S3 PhotoPainter](https://www.waveshare.com/esp32-s3-photopainter.htm)
 
 # API Docs
-The web API docs can be found in [docs/openapi.yaml](docs/openapi.yaml). A local http page in that same directly can be used to preview the API with 
+The web API docs can be found in [docs/openapi.yaml](docs/openapi.yaml).
+
+# Unit Test
+The folder `tests` contains a Python test script alongside a unit test C program for the API.
+To run it, you first must build the firmware like normal, then run the make file. Right now only 1 target exists, `make test_apis`.
 
 # Credits
 A decent amount of this firmware comes from Waveshare's own example, especially on the eink initialization and pmic stuff.

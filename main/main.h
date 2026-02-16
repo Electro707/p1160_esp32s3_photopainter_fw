@@ -1,6 +1,5 @@
-#ifndef MAIN_H
+#if !defined(MAIN_H) && !defined(UNIT_TEST)
 #define MAIN_H
-
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
