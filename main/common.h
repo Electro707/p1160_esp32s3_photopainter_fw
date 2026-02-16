@@ -3,7 +3,8 @@
 
 #include <stdint.h>
 
-#define FW_NAME     "ESP32S3 PhotoPainer Open Firmware"
+////////// fw info
+#define FW_NAME     "ESP32S3 PhotoPainter Open Firmware"
 #define FW_REV      "0.1.0-dev"
 
 ////////// Pin definition
@@ -21,6 +22,7 @@
 #define IO_DBG_LED1     45
 #define IO_DBG_LED2     42
 
+////////// Misc settings
 #define I2C_ADDR_AXP2101    0x34
 
 #define MAX_WIFI_INFO_STRLEN       32
@@ -28,9 +30,11 @@
 ////////// Other defines
 #define EVER    ;;
 
+////////// Sane typedefs
 typedef uint8_t u8;
 typedef uint32_t u32;
 
+////////// macros
 #define delayMs(_X)     vTaskDelay(_X / portTICK_PERIOD_MS)
 
 #endif

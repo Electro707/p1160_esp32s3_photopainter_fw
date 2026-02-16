@@ -19,6 +19,7 @@
 #include "esp_private/periph_ctrl.h"
 #include "hal/dma_types.h"
 #include "esp_private/gdma.h"
+#include "esp_pm.h"
 #include "nvs_flash.h"
 
 #include "common.h"
@@ -38,6 +39,14 @@ SemaphoreHandle_t displayFbMutex;
 void dispFreeRtosUpdateLoop(void *args);
 
 void mcuInit(void){
+    // configure Dynamic Frequency Scaling (DFS) settings
+    esp_pm_config_t pm_config = {
+            .max_freq_mhz = 160,
+            .min_freq_mhz = 20,
+            .light_sleep_enable = false
+    };
+    ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
+
     // init IO
     gpio_config_t gpio_conf;
     gpio_conf.intr_type     = GPIO_INTR_DISABLE;

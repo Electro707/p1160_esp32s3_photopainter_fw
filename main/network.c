@@ -10,6 +10,7 @@
 #include "nvs_flash.h"
 #include "esp_http_server.h"
 #include "esp_heap_caps.h"
+#include "mdns.h"
 #else
 #include "mock.h"
 #endif
@@ -280,6 +281,7 @@ end:
 static esp_err_t handle404NotFound(httpd_req_t *req, httpd_err_code_t error){
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send_err(req, error, "{\"stat\": \"Not Found\"}");
+    return ESP_OK;
 }
 
 /********** wifi events **********/
@@ -407,18 +409,24 @@ int wifiLoadNvmConf(void){
 /********** init functions **********/
 #ifndef UNIT_TEST
 void wifiInit(void){
+    esp_netif_t *netifSta;
     wifiEvents = xEventGroupCreate();
 
+    // open nvs handler
     ESP_ERROR_CHECK(nvs_open(NVS_ID, NVS_READWRITE, &wifiNvsHandle));
 
     // init tcp ip stack
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     esp_netif_create_default_wifi_ap();
-    esp_netif_create_default_wifi_sta();
+    netifSta = esp_netif_create_default_wifi_sta();
+    // set the hostname advertized to the router
+    esp_netif_set_hostname(netifSta, CONFIG_ESP_HOSTNAME);
 
-    // todo: support reading wifi ssid and password from nvs later on
-    // todo: support switching to AP mode if this fails
+    // init mDNS
+    ESP_ERROR_CHECK(mdns_init());
+    mdns_hostname_set(CONFIG_ESP_HOSTNAME);
+
     wifi_init_config_t wifiInitCfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&wifiInitCfg));
 

@@ -1,5 +1,6 @@
 ## IDF Component Manager Manifest File
 dependencies:
   ## Required IDF version
-  idf: '=5.5.2'
-  espressif/cjson: '=1.7.19~1'
+  idf: =5.5.2
+  espressif/cjson: =1.7.19~1
+  espressif/mdns: '*'

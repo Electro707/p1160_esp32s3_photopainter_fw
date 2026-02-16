@@ -26,5 +26,11 @@ menu "Main Application Config"
     config ESP_AP_WIFI_MAX_CONN
         int "WiFi AP Max in connection"
         default 2
+    
+    config ESP_HOSTNAME
+        string "The WiFi hostname"
+        default "p1160"
+        help
+            The hostname sent to the router. Can use used to find the device on the network
 
 endmenu
