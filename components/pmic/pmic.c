@@ -78,5 +78,6 @@ void pmicInit(i2c_master_bus_handle_t *masterHandle){
                                                       // note: without enabling the audio LDO, the system crashes and the I2C bus (what I probed use far)
                                                       // falls to ~1v. Stupid, deal with later
     axp2101RegWrite(APX2101_REG_LDO_EN1, 0x00);
+    axp2101RegWrite(APX2101_REG_ALDO3_VOLT, APX2101_ALDO_VOLT_3V3);
     axp2101RegWrite(APX2101_REG_ALDO4_VOLT, APX2101_ALDO_VOLT_3V3);
 }

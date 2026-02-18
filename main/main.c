@@ -35,6 +35,7 @@ spi_device_handle_t dispSpi;        // global spi device
 i2c_master_bus_handle_t i2cHandle;
 
 // the display updater task starter/handler
+TaskHandle_t pmicTelemTask_h;
 TaskHandle_t dispTask_h;
 SemaphoreHandle_t displayFbMutex;
 
@@ -134,7 +135,7 @@ void app_main(void)
                             &dispTask_h, 0);
 
     xTaskCreatePinnedToCore(pmicTelemetryUpdate, "pmicTelem", 4096, NULL, 5,
-                            &dispTask_h, 0);
+                            &pmicTelemTask_h, 0);
 }
 
 void dispTrigUpdate(void){

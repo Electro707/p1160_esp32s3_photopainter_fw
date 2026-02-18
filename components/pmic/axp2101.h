@@ -18,6 +18,7 @@
 
 #define APX2101_REG_LDO_EN0     0x90
 #define APX2101_REG_LDO_EN1     0x91
+#define APX2101_REG_ALDO3_VOLT  0x94
 #define APX2101_REG_ALDO4_VOLT  0x95
 
 // dc/dc voltage settings. precalculated as (reg = (targ-1.5)/0.1)
