@@ -58,6 +58,39 @@ static esp_err_t handleUriGetCoffee(httpd_req_t *req){
     return ESP_OK;
 }
 
+static esp_err_t handleUriGetPmicInfo(httpd_req_t *req){
+    esp_err_t ret;
+    cJSON *jRoot;
+    char *jsonPrint;
+
+    httpd_resp_set_type(req, "application/json");
+    jRoot = cJSON_CreateObject();
+
+    if(xSemaphoreTake(pmicTelemetryMutex, pdMS_TO_TICKS(500)) != pdTRUE){
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"Could not take semephore for pmic struct\"}");
+        return ESP_FAIL;
+    }
+    cJSON_AddStringToObject(jRoot, "stat", "ok");
+    cJSON_AddNumberToObject(jRoot, "battVolt", (float)pmicTelem.battVolt_mV);
+    cJSON_AddNumberToObject(jRoot, "sysVolt", (float)pmicTelem.sysVolt_mV);
+    cJSON_AddNumberToObject(jRoot, "vBusVolt", (float)pmicTelem.vBusVolt_mV);
+    xSemaphoreGive(pmicTelemetryMutex);
+
+    jsonPrint = cJSON_PrintUnformatted(jRoot);
+    if(jsonPrint == NULL){
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"CJSON Fail\"}");
+        ret = ESP_FAIL;
+    } else {
+        httpd_resp_sendstr(req, jsonPrint);
+        ret = ESP_OK;
+    }
+
+    cJSON_Delete(jRoot);
+    return ret;
+}
+
+
+
 static esp_err_t handleUriGetWifiInfo(httpd_req_t *req){
     wifi_mode_t wifiM;
     esp_err_t ret;
@@ -481,6 +514,10 @@ void startHttpServer(void){
 
     uriMatch.handler = handleUriGetWifiInfo;
     uriMatch.uri = "/api/v1/wifiInfo";
+    httpd_register_uri_handler(server, &uriMatch);
+
+    uriMatch.handler = handleUriGetPmicInfo;
+    uriMatch.uri = "/api/v1/pmicInfo";
     httpd_register_uri_handler(server, &uriMatch);
 
     /**** POST commands */

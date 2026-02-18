@@ -37,8 +37,6 @@ The PMIC stuff, which was partially copied from Waveshare's example, is from the
 
 - Add SD card storage and automatic image cycling
 - Low power
-- pmic rework
-    - The PMIC uses the [XPowerLibs](https://github.com/lewisxhe/XPowersLib) library, which is what Waveshare's example "came with". I would like to make my own library.
 - Moving eink.c into it's own component
     - Might have to make another component for the sane defines, such as u8
 - Low-Level driving of SPI
@@ -56,4 +54,4 @@ While I do use ChatGPT in the my development, it is used as a pointer to informa
 I will not accept purely AI generated code, especially AI bot-generated PRs. The author must have a full understanding of their code.
 
 # License
-This project is licensed under GPLv3, except for the directory `components/xpowerlibs`, which is under the MIT license.
+This project is licensed under GPLv3.

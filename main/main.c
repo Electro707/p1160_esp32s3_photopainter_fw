@@ -8,34 +8,40 @@
 #include <string.h>
 #include <inttypes.h>
 #include "sdkconfig.h"
+
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "driver/i2c_master.h"
-#include "soc/gpio_struct.h"
-#include "soc/io_mux_reg.h"
-#include "soc/system_struct.h"
-#include "soc/spi_struct.h"
-#include "hal/spi_ll.h"
-#include "esp_private/periph_ctrl.h"
-#include "hal/dma_types.h"
-#include "esp_private/gdma.h"
+
+// stuff that I was trying to do my own SPI implementation
+// #include "soc/gpio_struct.h"
+// #include "soc/io_mux_reg.h"
+// #include "soc/system_struct.h"
+// #include "soc/spi_struct.h"
+// #include "hal/spi_ll.h"
+// #include "esp_private/periph_ctrl.h"
+// #include "hal/dma_types.h"
+// #include "esp_private/gdma.h"
+
 #include "esp_pm.h"
 #include "nvs_flash.h"
 
 #include "common.h"
 #include "main.h"
-#include "pmic.h"
 #include "eink.h"
 #include "network.h"
 
 spi_device_handle_t dispSpi;        // global spi device
 i2c_master_bus_handle_t i2cHandle;
-i2c_master_dev_handle_t i2cDevPmic;
 
 // the display updater task starter/handler
 TaskHandle_t dispTask_h;
 SemaphoreHandle_t displayFbMutex;
 
+pmicTelemetry pmicTelem;
+SemaphoreHandle_t pmicTelemetryMutex;
+
+void pmicTelemetryUpdate(void *args);
 void dispFreeRtosUpdateLoop(void *args);
 
 void mcuInit(void){
@@ -95,12 +101,6 @@ void mcuInit(void){
     i2c_bus_cfg.glitch_ignore_cnt = 7;
     i2c_bus_cfg.flags.enable_internal_pullup = true;
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg, &i2cHandle));
-    i2c_device_config_t dev_cfg;
-    memset(&dev_cfg, 0, sizeof(dev_cfg));
-    dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
-    dev_cfg.device_address  = I2C_ADDR_AXP2101;
-    dev_cfg.scl_speed_hz    = 300000;
-    ESP_ERROR_CHECK(i2c_master_bus_add_device(i2cHandle, &dev_cfg, &i2cDevPmic));
 
     // init nvs flash, which is used for some wifi stuff
     esp_err_t err = nvs_flash_init();
@@ -118,10 +118,12 @@ void app_main(void)
 {
     printf("Hello world!\n");
     mcuInit();
-    pmic_init();
+    pmicInit(&i2cHandle);
     dispInit();
 
+    memset(&pmicTelem, 0, sizeof(pmicTelem));
     displayFbMutex = xSemaphoreCreateMutex();
+    pmicTelemetryMutex = xSemaphoreCreateMutex();
 
     wifiInit();
     startHttpServer();
@@ -130,10 +132,22 @@ void app_main(void)
 
     xTaskCreatePinnedToCore(dispFreeRtosUpdateLoop, "display", 4096, NULL, 5,
                             &dispTask_h, 0);
+
+    xTaskCreatePinnedToCore(pmicTelemetryUpdate, "pmicTelem", 4096, NULL, 5,
+                            &dispTask_h, 0);
 }
 
 void dispTrigUpdate(void){
     xTaskNotifyGive(dispTask_h);
+}
+
+void pmicTelemetryUpdate(void *args){
+    for(EVER){
+        xSemaphoreTake(pmicTelemetryMutex, portMAX_DELAY);
+        pmicGetTelemetry(&pmicTelem);
+        xSemaphoreGive(pmicTelemetryMutex);
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    }
 }
 
 void dispFreeRtosUpdateLoop(void *args){

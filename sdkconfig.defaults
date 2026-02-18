@@ -1,6 +1,11 @@
 CONFIG_IDF_TARGET="esp32s3"
 
 #
+# PMIC-AXP2101 Configuration
+#
+CONFIG_I2C_ADDR_AXP2101=52
+
+#
 # Serial flasher config
 #
 CONFIG_ESPTOOLPY_FLASH_MODE_AUTO_DETECT=y

@@ -1,0 +1,7 @@
+menu "PMIC-AXP2101 Configuration"
+    config I2C_ADDR_AXP2101
+        int "I2C Address"
+        default 52
+        help
+            The I2C address to use for the PMIC
+endmenu
