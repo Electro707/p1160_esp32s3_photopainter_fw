@@ -24,20 +24,6 @@ esp_err_t axp2101RegWrite(u8 reg, u8 val){
     return i2c_master_transmit(i2cDevPmic, toWrite, 2, I2C_READ_WAIT);
 }
 
-u16 pmicGetVoltMonitor(u8 baseReg){
-    u8 tmp;
-    u16 volts = 0;
-
-    // todo: can a register be read by continous read? if so, do that!
-    axp2101RegRead(baseReg, &tmp);
-    tmp &= 0x1F;
-    volts |= ((u16)tmp << 8);
-    axp2101RegRead(baseReg+1, &tmp);
-    volts |= tmp;
-
-    return volts;
-}
-
 #define MACRO_GET_VOLT_FROM_REG(_OUT, _REG, _OFF) \
     tmp16 = ((u16)_REG[_OFF] << 8) | _REG[_OFF+1];   \
     tmp16 &= 0x1FFF;                                \
@@ -67,11 +53,6 @@ void pmicGetTelemetry(pmicTelemetry *telemetry){
     telemetry->currLimited = ((voltsRegs[0] & (1 << 0)) != 0);
     telemetry->chargeDir = (voltsRegs[1] >> 5) & 0b11;
     telemetry->chargeStat = voltsRegs[1] & 0b111;
-
-    // telemetry->battVolt_mV = pmicGetVoltMonitor(APX2101_REG_MON_VBAT_BASE);
-    // telemetry->vBusVolt_mV = pmicGetVoltMonitor(APX2101_REG_MON_VBUS_BASE);
-    // telemetry->sysVolt_mV = pmicGetVoltMonitor(APX2101_REG_MON_VSYS_BASE);
-    // todo: battery percentage, is charged, etc
 }
 #undef MACRO_GET_VOLT_FROM_REG
 
