@@ -58,10 +58,18 @@ static esp_err_t handleUriGetCoffee(httpd_req_t *req){
     return ESP_OK;
 }
 
+static esp_err_t addVoltageToJson(cJSON *jRoot, const char *key, float val){
+    char numb[16];
+    snprintf(numb, 16, "%.2f", val);
+    cJSON_AddStringToObject(jRoot, key, numb);
+    return ESP_OK;
+}
+
 static esp_err_t handleUriGetPmicInfo(httpd_req_t *req){
     esp_err_t ret;
     cJSON *jRoot;
     char *jsonPrint;
+    const char *strToFill;
 
     httpd_resp_set_type(req, "application/json");
     jRoot = cJSON_CreateObject();
@@ -71,9 +79,55 @@ static esp_err_t handleUriGetPmicInfo(httpd_req_t *req){
         return ESP_FAIL;
     }
     cJSON_AddStringToObject(jRoot, "stat", "ok");
-    cJSON_AddNumberToObject(jRoot, "battVolt", (float)pmicTelem.battVolt_mV);
-    cJSON_AddNumberToObject(jRoot, "sysVolt", (float)pmicTelem.sysVolt_mV);
-    cJSON_AddNumberToObject(jRoot, "vBusVolt", (float)pmicTelem.vBusVolt_mV);
+    addVoltageToJson(jRoot, "battVolt", pmicTelem.battVolt);
+    addVoltageToJson(jRoot, "sysVolt", pmicTelem.sysVolt);
+    addVoltageToJson(jRoot, "vBusVolt", pmicTelem.vBusVolt);
+    cJSON_AddNumberToObject(jRoot, "battPercentage", pmicTelem.battPercentage);
+    cJSON_AddBoolToObject(jRoot, "vBusGood", pmicTelem.vBusGood);
+    cJSON_AddBoolToObject(jRoot, "battPresent", pmicTelem.battPresent);
+    cJSON_AddBoolToObject(jRoot, "currLimited", pmicTelem.currLimited);
+
+    switch(pmicTelem.chargeDir){
+        case PMIC_CHR_DIR_STANDBY:
+            strToFill = "Standby";
+            break;
+        case PMIC_CHR_DIR_CHARGE:
+            strToFill = "Charge";
+            break;
+        case PMIC_CHR_DIR_DISCHARGE:
+            strToFill = "Discharge";
+            break;
+        default:
+            strToFill = "Error";
+            break;
+    }
+    cJSON_AddStringToObject(jRoot, "chargeDir", strToFill);
+
+    switch(pmicTelem.chargeStat){
+        case PMIC_CHR_STAT_TRI:
+            strToFill = "Tri-State";
+            break;
+        case PMIC_CHR_STAT_PRE:
+            strToFill = "Pre-Charge";
+            break;
+        case PMIC_CHR_STAT_CC:
+            strToFill = "Constant Current";
+            break;
+        case PMIC_CHR_STAT_CV:
+            strToFill = "Constant Voltage";
+            break;
+        case PMIC_CHR_STAT_DONE:
+            strToFill = "Done";
+            break;
+        case PMIC_CHR_STAT_NO_CHARGE:
+            strToFill = "Not Charging";
+            break;
+        default:
+            strToFill = "Error";
+            break;
+    }
+    cJSON_AddStringToObject(jRoot, "chargeState", strToFill);
+
     xSemaphoreGive(pmicTelemetryMutex);
 
     jsonPrint = cJSON_PrintUnformatted(jRoot);

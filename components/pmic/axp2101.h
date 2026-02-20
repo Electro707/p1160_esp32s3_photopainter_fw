@@ -1,6 +1,8 @@
 #ifndef AXP2101_H
 #define AXP2101_H
 
+#define APX2101_REG_PMU_STAT_1      0x00
+
 #define APX2101_REG_MON_VBAT_BASE   0x34
 #define APX2101_REG_MON_TS_BASE     0x36
 #define APX2101_REG_MON_VBUS_BASE   0x38
@@ -20,6 +22,8 @@
 #define APX2101_REG_LDO_EN1     0x91
 #define APX2101_REG_ALDO3_VOLT  0x94
 #define APX2101_REG_ALDO4_VOLT  0x95
+
+#define APX2101_REG_BATT_PERC   0xA4
 
 // dc/dc voltage settings. precalculated as (reg = (targ-1.5)/0.1)
 #define APX2101_DCDC_VOLT_3V3     18

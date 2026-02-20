@@ -38,12 +38,42 @@ u16 pmicGetVoltMonitor(u8 baseReg){
     return volts;
 }
 
+#define MACRO_GET_VOLT_FROM_REG(_OUT, _REG, _OFF) \
+    tmp16 = ((u16)_REG[_OFF] << 8) | _REG[_OFF+1];   \
+    tmp16 &= 0x1FFF;                                \
+    _OUT = (tmp16 / 1000.0);                      \
+
 void pmicGetTelemetry(pmicTelemetry *telemetry){
-    telemetry->battVolt_mV = pmicGetVoltMonitor(APX2101_REG_MON_VBAT_BASE);
-    telemetry->vBusVolt_mV = pmicGetVoltMonitor(APX2101_REG_MON_VBUS_BASE);
-    telemetry->sysVolt_mV = pmicGetVoltMonitor(APX2101_REG_MON_VSYS_BASE);
+    u8 voltsRegs[2*4];
+    u8 reg = APX2101_REG_MON_VBAT_BASE;
+    u16 tmp16;
+    u8 tmp8;
+
+    i2c_master_transmit_receive(i2cDevPmic, &reg, 1, voltsRegs, 8, I2C_READ_WAIT);
+
+    MACRO_GET_VOLT_FROM_REG(telemetry->battVolt, voltsRegs, 0);
+    MACRO_GET_VOLT_FROM_REG(telemetry->vBusVolt, voltsRegs, 4);
+    MACRO_GET_VOLT_FROM_REG(telemetry->sysVolt, voltsRegs, 6);
+
+    axp2101RegRead(APX2101_REG_BATT_PERC, &tmp8);
+    telemetry->battPercentage = tmp8;
+
+    // yes I know it's not the voltage registers we are using, I am just re-using that same array :/
+    reg = APX2101_REG_PMU_STAT_1;
+    i2c_master_transmit_receive(i2cDevPmic, &reg, 1, voltsRegs, 2, I2C_READ_WAIT);
+
+    telemetry->vBusGood = ((voltsRegs[0] & (1 << 5)) != 0);
+    telemetry->battPresent = ((voltsRegs[0] & (1 << 3)) != 0);
+    telemetry->currLimited = ((voltsRegs[0] & (1 << 0)) != 0);
+    telemetry->chargeDir = (voltsRegs[1] >> 5) & 0b11;
+    telemetry->chargeStat = voltsRegs[1] & 0b111;
+
+    // telemetry->battVolt_mV = pmicGetVoltMonitor(APX2101_REG_MON_VBAT_BASE);
+    // telemetry->vBusVolt_mV = pmicGetVoltMonitor(APX2101_REG_MON_VBUS_BASE);
+    // telemetry->sysVolt_mV = pmicGetVoltMonitor(APX2101_REG_MON_VSYS_BASE);
     // todo: battery percentage, is charged, etc
 }
+#undef MACRO_GET_VOLT_FROM_REG
 
 void pmicInit(i2c_master_bus_handle_t *masterHandle){
     // init i2c bus

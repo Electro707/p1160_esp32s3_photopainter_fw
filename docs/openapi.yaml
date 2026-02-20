@@ -208,3 +208,35 @@ paths:
       responses:
         "200":
           $ref: '#/components/responses/PostOKResponse'
+  /pmicInfo:
+    get:
+      description: "Gets power information, such as battery change, voltages, etc"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              stat:
+                type: string
+                const: "ok"
+              battVolt:
+                type: integer
+                description: "The battery voltage, in volts"
+              sysVolt:
+                type: integer
+                description: "The system voltage, in volts"
+              vBusVolt:
+                type: integer
+                description: "The usb voltage, in volts"
+              battPercentage:
+                type: integer
+                description: "The battery percentage"
+              vBusGood:
+                type: oo
+                description: "If usb power is present"
+              battPresent:
+                type: oo
+                description: "If a battery is present"
+              currLimited:
+                type: bool
+                description: "If currently is limited by the pmic"
