@@ -31,7 +31,7 @@ To run it, you first must build the firmware like normal, then run the make file
 # Credits
 A decent amount of this firmware comes from Waveshare's own example, especially on the eink initialization and pmic stuff.
 
-The PMIC stuff, which was partially copied from Waveshare's example, is from the [XPowerLibs](https://github.com/lewisxhe/XPowersLib) library.
+The previous implementation of the pmic stuff was by the [XPowerLibs](https://github.com/lewisxhe/XPowersLib) library. I have since did it myself in C.
 
 # Future Todo
 

@@ -19,6 +19,13 @@
 #define IO_I2C_SDA      47
 #define IO_I2C_SCL      48
 
+#define IO_SDMMC_D0     40
+#define IO_SDMMC_D1     1
+#define IO_SDMMC_D2     2
+#define IO_SDMMC_D3     38
+#define IO_SDMMC_CLK    39
+#define IO_SDMMC_CMD    41
+
 #define IO_DBG_LED1     45
 #define IO_DBG_LED2     42
 

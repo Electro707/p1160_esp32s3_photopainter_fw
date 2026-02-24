@@ -6,12 +6,14 @@
 #include "freertos/portmacro.h"
 #include "driver/spi_master.h"
 #include "driver/i2c_master.h"
+#include "sdmmc_cmd.h"
 
 #include "pmic.h"
 
 
 extern spi_device_handle_t dispSpi;             // global spi device
 extern i2c_master_bus_handle_t i2cHandle;       // global i2c handler
+extern sdmmc_card_t sdCard;                     // global sdcard handler
 
 extern SemaphoreHandle_t displayFbMutex;        // mutex for display updating
 

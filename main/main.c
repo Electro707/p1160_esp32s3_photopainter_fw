@@ -12,6 +12,8 @@
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "driver/i2c_master.h"
+#include "driver/sdmmc_host.h"
+#include "sdmmc_cmd.h"
 
 // stuff that I was trying to do my own SPI implementation
 // #include "soc/gpio_struct.h"
@@ -23,6 +25,7 @@
 // #include "hal/dma_types.h"
 // #include "esp_private/gdma.h"
 
+#include "esp_log.h"
 #include "esp_pm.h"
 #include "nvs_flash.h"
 
@@ -30,9 +33,11 @@
 #include "main.h"
 #include "eink.h"
 #include "network.h"
+#include "fileSys.h"
 
 spi_device_handle_t dispSpi;        // global spi device
 i2c_master_bus_handle_t i2cHandle;
+sdmmc_card_t sdCard;
 
 // the display updater task starter/handler
 TaskHandle_t pmicTelemTask_h;
@@ -44,6 +49,8 @@ SemaphoreHandle_t pmicTelemetryMutex;
 
 void pmicTelemetryUpdate(void *args);
 void dispFreeRtosUpdateLoop(void *args);
+
+static const char *TAG = "main";
 
 void mcuInit(void){
     // configure Dynamic Frequency Scaling (DFS) settings
@@ -103,6 +110,31 @@ void mcuInit(void){
     i2c_bus_cfg.flags.enable_internal_pullup = true;
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg, &i2cHandle));
 
+    // init sd card
+    ESP_ERROR_CHECK(sdmmc_host_init());
+    sdmmc_slot_config_t sdmmcConf = {
+        .clk = IO_SDMMC_CLK,
+        .cmd = IO_SDMMC_CMD,
+        .d0 = IO_SDMMC_D0,
+        .d1 = IO_SDMMC_D1,
+        .d2 = IO_SDMMC_D2,
+        .d3 = IO_SDMMC_D3,
+        .d4 = GPIO_NUM_NC,
+        .d5 = GPIO_NUM_NC,
+        .d6 = GPIO_NUM_NC,
+        .d7 = GPIO_NUM_NC,
+        .cd = SDMMC_SLOT_NO_CD,
+        .wp = SDMMC_SLOT_NO_WP,
+        .width = 4,
+        .flags = 0,
+    };
+    ESP_ERROR_CHECK(sdmmc_host_init_slot(SDMMC_HOST_SLOT_1, &sdmmcConf));
+
+    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
+    host.max_freq_khz = SDMMC_FREQ_DEFAULT;
+    // host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
+    sdmmc_card_init(&host, &sdCard);
+    
     // init nvs flash, which is used for some wifi stuff
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -115,12 +147,22 @@ void mcuInit(void){
 
 }
 
-void app_main(void)
-{
+void app_main(void){
+    esp_err_t stat;
+
     printf("Hello world!\n");
     mcuInit();
     pmicInit(&i2cHandle);
     dispInit();
+    stat = sdmmc_get_status(&sdCard);
+
+    if(stat == ESP_OK){
+        stat = initFs();
+        mountFs();
+        // todo: do something with return value?
+    } else {
+        ESP_LOGW(TAG, "SD card status not good! %d", stat);
+    }
 
     memset(&pmicTelem, 0, sizeof(pmicTelem));
     displayFbMutex = xSemaphoreCreateMutex();

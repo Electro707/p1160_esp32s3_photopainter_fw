@@ -18,6 +18,7 @@
 #include <cJSON.h>
 
 #include "network.h"
+#include "fileSys.h"
 #include "common.h"
 #include "eink.h"
 #include "main.h"
@@ -143,7 +144,36 @@ static esp_err_t handleUriGetPmicInfo(httpd_req_t *req){
     return ret;
 }
 
+static esp_err_t handleUriGetImgAvailable(httpd_req_t *req){
+    esp_err_t ret;
+    cJSON *jRoot;
+    char *jsonPrint;
+    const char *strToFill;
 
+    httpd_resp_set_type(req, "application/json");
+    jRoot = cJSON_CreateObject();
+    cJSON_AddStringToObject(jRoot, "stat", "ok");
+    cJSON * jArr = cJSON_AddArrayToObject(jRoot, "img");
+
+    ret = fileSysGetAvailableImages(jArr);
+    if(ret){
+        ESP_LOGW(TAG, "Unable to get images in directory");
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"Directory Fail\"}");
+        ret = ESP_FAIL;
+    } else {
+        jsonPrint = cJSON_PrintUnformatted(jRoot);
+        if(jsonPrint == NULL){
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"CJSON Fail\"}");
+            ret = ESP_FAIL;
+        } else {
+            httpd_resp_sendstr(req, jsonPrint);
+            ret = ESP_OK;
+        }
+    }
+
+    cJSON_Delete(jRoot);
+    return ret;
+}
 
 static esp_err_t handleUriGetWifiInfo(httpd_req_t *req){
     wifi_mode_t wifiM;
@@ -572,6 +602,10 @@ void startHttpServer(void){
 
     uriMatch.handler = handleUriGetPmicInfo;
     uriMatch.uri = "/api/v1/pmicInfo";
+    httpd_register_uri_handler(server, &uriMatch);
+
+    uriMatch.handler = handleUriGetImgAvailable;
+    uriMatch.uri = "/api/v1/img/available";
     httpd_register_uri_handler(server, &uriMatch);
 
     /**** POST commands */
