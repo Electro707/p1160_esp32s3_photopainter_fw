@@ -131,8 +131,8 @@ void mcuInit(void){
     ESP_ERROR_CHECK(sdmmc_host_init_slot(SDMMC_HOST_SLOT_1, &sdmmcConf));
 
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-    host.max_freq_khz = SDMMC_FREQ_DEFAULT;
-    // host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
+    // host.max_freq_khz = SDMMC_FREQ_DEFAULT;
+    host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
     sdmmc_card_init(&host, &sdCard);
     
     // init nvs flash, which is used for some wifi stuff
@@ -173,10 +173,10 @@ void app_main(void){
 
     printf("Done with init\n");
 
-    xTaskCreatePinnedToCore(dispFreeRtosUpdateLoop, "display", 4096, NULL, 5,
+    xTaskCreatePinnedToCore(dispFreeRtosUpdateLoop, "display", 4096, NULL, 4,
                             &dispTask_h, 0);
 
-    xTaskCreatePinnedToCore(pmicTelemetryUpdate, "pmicTelem", 4096, NULL, 5,
+    xTaskCreatePinnedToCore(pmicTelemetryUpdate, "pmicTelem", 4096, NULL, 4,
                             &pmicTelemTask_h, 0);
 }
 

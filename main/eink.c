@@ -165,6 +165,10 @@ void dispInit(void){
     dispWaitBusy();         //waiting for the electronic paper IC to release the idle signal
 }
 
+u8 *dispGetFb(void){
+    return dispFrameBuff;
+}
+
 void dispFillColor(dispColor_e color){
     u8 colorM = (color << 4) | color;
     memset(dispFrameBuff, colorM, sizeof(dispFrameBuff));

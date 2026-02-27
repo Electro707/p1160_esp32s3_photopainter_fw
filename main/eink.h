@@ -51,4 +51,6 @@ int setFrameBuffRaw(u8 *data, u32 len, u32 offset);
  */
 void dispUpdate(void);
 
+u8 *dispGetFb(void);
+
 #endif
