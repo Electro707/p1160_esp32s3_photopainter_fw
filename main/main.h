@@ -10,6 +10,15 @@
 
 #include "pmic.h"
 
+typedef enum{
+    MODE_STANDBY,
+    MODE_IMAGE_CYCLE
+}mode_e;
+
+typedef enum{
+    IMAGE_CYCLE_MODE_SELECTED,      // cycle through pre-selected images
+    IMAGE_CYCLE_MODE_ALL,           // cycle through all images on the SD card
+}imgCycleMode_e;
 
 extern spi_device_handle_t dispSpi;             // global spi device
 extern i2c_master_bus_handle_t i2cHandle;       // global i2c handler

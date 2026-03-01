@@ -56,6 +56,16 @@ void pmicGetTelemetry(pmicTelemetry *telemetry){
 }
 #undef MACRO_GET_VOLT_FROM_REG
 
+void pmicDisableLDOs(void){
+    axp2101RegWrite(APX2101_REG_LDO_EN0, 0x04);
+}
+
+void pmicEnableLDOs(void){
+    axp2101RegWrite(APX2101_REG_LDO_EN0, 0x0C);       // disable all LDOs except for e-ink one
+                                                    // note: without enabling the audio LDO, the system crashes and the I2C bus (what I probed use far)
+                                                    // falls to ~1v. Stupid, deal with later
+}
+
 void pmicInit(i2c_master_bus_handle_t *masterHandle){
     // init i2c bus
     i2c_device_config_t dev_cfg;
@@ -85,9 +95,7 @@ void pmicInit(i2c_master_bus_handle_t *masterHandle){
     axp2101RegWrite(APX2101_REG_BUTTON_TERM_VOLT, 0b111);        // 3.3v termination for button
     axp2101RegWrite(APX2101_REG_CHARGE_EN, 0b1110);         // enable guage module, button charging, main cell charging, disable watchdog
     axp2101RegWrite(APX2101_REG_DC1_VOLT, APX2101_DCDC_VOLT_3V3);
-    axp2101RegWrite(APX2101_REG_LDO_EN0, 0x0C);       // disable all LDOs except for e-ink one
-                                                      // note: without enabling the audio LDO, the system crashes and the I2C bus (what I probed use far)
-                                                      // falls to ~1v. Stupid, deal with later
+    axp2101RegWrite(APX2101_REG_LDO_EN0, 0x04);             // disable LDOs, they will be enabled when needed
     axp2101RegWrite(APX2101_REG_LDO_EN1, 0x00);
     axp2101RegWrite(APX2101_REG_ALDO3_VOLT, APX2101_ALDO_VOLT_3V3);
     axp2101RegWrite(APX2101_REG_ALDO4_VOLT, APX2101_ALDO_VOLT_3V3);

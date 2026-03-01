@@ -86,7 +86,9 @@ void dispInit(void){
     displayFbMutex = xSemaphoreCreateMutex();
 
     spi_device_acquire_bus(dispSpi, portMAX_DELAY);
+}
 
+void dispBoot(void){
     memset(&spiTransactSett, 0 ,sizeof(spiTransactSett));
     spiTransactSett.flags = SPI_TRANS_USE_TXDATA;
 

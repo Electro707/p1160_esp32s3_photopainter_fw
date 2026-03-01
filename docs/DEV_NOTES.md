@@ -1,0 +1,2 @@
+# LDO shutdown
+It seems that when the `AUDIO_VCC` rail is shut down, that also brings the I2C lines with it, not quite to 0v but like 1-1.5v last I remembered (I measuring long before I wrote this here). The `ES8311` chip seems at fault I would say, as it's the only IC dependent on that VCC that is also tied to I2C

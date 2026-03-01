@@ -6,7 +6,7 @@
 #include "eink.h"
 #include "ff.h"
 
-#define IMAGE_DIR       "img"
+#define IMAGE_DIR       "IMG"
 
 typedef enum{
     FILE_SYS_RET_OK = 0,            // all is good
@@ -53,7 +53,9 @@ fSysRet fileSysIsImageValid(const char *imgName);
 
 fSysRet fileSysOpenImage(const char *imgName, FIL *file);
 
-fSysRet fileSysLoadImage(const char* imgName, u8 *datOut);
+fSysRet fileSysLoadImage(const char* imgName, u8 *datOut, bool isNameDirect);
+
+fSysRet fileSysLoadNextImageFromIdx(u32 *lastIdx, u8 *datOut);
 
 /**
  * Saves the local image buffer (sdCardFrameBuff) to an image file

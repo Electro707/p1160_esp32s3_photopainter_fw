@@ -34,7 +34,9 @@
 
 #define MAX_WIFI_INFO_STRLEN       32
 
-#define MAX_IMAGE_NAME_LEN      64
+#define MAX_IMAGE_NAME_LEN      32
+
+#define MAX_IMAGE_CYCLE_N       10      // up to how many images can be added to a defined cycle
 
 ////////// Other defines
 #define EVER    ;;

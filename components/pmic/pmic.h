@@ -34,4 +34,7 @@ typedef struct{
 void pmicInit(i2c_master_bus_handle_t *masterHandle);
 void pmicGetTelemetry(pmicTelemetry *telemetry);
 
+void pmicDisableLDOs(void);
+void pmicEnableLDOs(void);
+
 #endif

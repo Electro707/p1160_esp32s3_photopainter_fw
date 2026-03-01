@@ -511,7 +511,7 @@ static esp_err_t handleUriLoadImage(httpd_req_t *req){
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"Could not take frame buffer mutex\"}");
         return ESP_FAIL;
     }
-    fSysRet stat = fileSysLoadImage(jImgName->valuestring, destBuff);
+    fSysRet stat = fileSysLoadImage(jImgName->valuestring, destBuff, false);
     releaseDispFb();
     if(stat == FILE_SYS_RET_OK){
         httpd_resp_sendstr(req, "{\"stat\": \"ok\"}");
@@ -749,6 +749,7 @@ void wifiInit(void){
 
     wifi_init_config_t wifiInitCfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&wifiInitCfg));
+    esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
 
     esp_event_handler_instance_t instance_any_id;
     esp_event_handler_instance_t instance_got_ip;

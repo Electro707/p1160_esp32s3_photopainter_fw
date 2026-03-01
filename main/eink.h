@@ -20,9 +20,14 @@ typedef enum{
 }dispColor_e;
 
 /**
- * Inits the display with some init registers
+ * Inits this module
  */
 void dispInit(void);
+
+/**
+ * Inits the display with some init registers
+ */
+void dispBoot(void);
 
 /**
  * Fills the framebuffer with the specified color

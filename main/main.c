@@ -35,6 +35,15 @@
 #include "network.h"
 #include "fileSys.h"
 
+struct{
+    TickType_t period_ticks;      // the duration of the cycle in ticks. Must NOT be less than 12-15 seconds due to display refresh rate
+    char imgCycleSel[MAX_IMAGE_CYCLE_N][MAX_IMAGE_NAME_LEN];
+    imgCycleMode_e mode;
+    // internal variables
+    u32 sdCardImageN;       // if in "ALL" mode, this is the current index of the image read
+    TimerHandle_t handler;
+}imgCycleSettings;
+
 spi_device_handle_t dispSpi;        // global spi device
 i2c_master_bus_handle_t i2cHandle;
 sdmmc_card_t sdCard;
@@ -47,6 +56,7 @@ TaskHandle_t dispTask_h;
 TaskHandle_t pmicTelemTask_h;
 SemaphoreHandle_t pmicTelemetryMutex;
 
+void taskTimerImageCycler(TimerHandle_t xTimer);
 void taskPmicTelemetry(void *args);
 void taskDispUpdate(void *args);
 
@@ -57,10 +67,9 @@ void mcuInit(void){
     esp_pm_config_t pm_config = {
             .max_freq_mhz = 160,
             .min_freq_mhz = 20,
-            .light_sleep_enable = false
+            .light_sleep_enable = true
     };
-    // todo: enable when fw is in a more stable state, sort of slows down debugging
-    // ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
+    ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
 
     // init IO
     gpio_config_t gpio_conf;
@@ -178,6 +187,14 @@ void app_main(void){
 
     xTaskCreatePinnedToCore(taskPmicTelemetry, "pmicTelem", 4096, NULL, 4,
                             &pmicTelemTask_h, 0);
+    
+    // todo debug values. Have them default to something and load them from nvm
+    imgCycleSettings.period_ticks = pdTICKS_TO_MS(1000 * 60);
+    imgCycleSettings.mode = IMAGE_CYCLE_MODE_ALL;
+    imgCycleSettings.handler = xTimerCreate("imgCycle", imgCycleSettings.period_ticks, pdTRUE, ( void * )0, taskTimerImageCycler);
+
+    // debug: enable the image cycle timer, for later have a `setMode` function
+    xTimerStart(imgCycleSettings.handler, 0);
 }
 
 u32 dispTrigUpdate(void){
@@ -187,6 +204,25 @@ u32 dispTrigUpdate(void){
         return 1;
     }
     return 0;
+}
+
+void taskTimerImageCycler(TimerHandle_t xTimer){
+    static u32 lastIdx = 0;
+    // if in all mode, cycle through all images on the SD card
+    if(imgCycleSettings.mode == IMAGE_CYCLE_MODE_ALL){
+        imgCycleSettings.sdCardImageN++;
+    }
+
+    u8 *destBuff = takeDispFb(pdTICKS_TO_MS(100));
+    if(destBuff == NULL){
+        ESP_LOGE(TAG, "Unable to take ownership of frame buffer");
+        return;
+    }
+    fSysRet stat = fileSysLoadNextImageFromIdx(&lastIdx, destBuff);
+    releaseDispFb();
+    if(stat == FILE_SYS_RET_OK){
+        dispTrigUpdate();
+    }
 }
 
 /**
@@ -206,13 +242,21 @@ void taskPmicTelemetry(void *args){
  * A task that updates the display
  * This task only "runs" when the task is notified, otherwise halts
  * 
- * A task notification value determines if it's updated from a frame buffer, or from
- * an image name on the sd card (from variable dispTaskFromSdName)
  */
 void taskDispUpdate(void *args){
+    esp_pm_lock_handle_t sleepLockHandle;
+    ESP_ERROR_CHECK(esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, "disp", &sleepLockHandle));
     for(EVER){
         xTaskNotifyStateClear(NULL);
         xTaskNotifyWait(ULONG_MAX, 0, NULL, portMAX_DELAY);
+        esp_pm_lock_acquire(sleepLockHandle);
+
+        pmicEnableLDOs();
+        delayMs(100);            // some boot up time, todo: instrument
+        dispBoot();
         dispUpdate();
+        pmicDisableLDOs();      // after we are done, shut down the display
+        
+        esp_pm_lock_release(sleepLockHandle);       // we-allow sleep mode
     }
 }
