@@ -151,7 +151,6 @@ static esp_err_t handleUriGetImgAvailable(httpd_req_t *req){
     esp_err_t ret;
     cJSON *jRoot;
     char *jsonPrint;
-    const char *strToFill;
 
     httpd_resp_set_type(req, "application/json");
     jRoot = cJSON_CreateObject();
@@ -288,36 +287,41 @@ static esp_err_t handleUriPostWifiStaConn(httpd_req_t *req){
 
 }
 
-static esp_err_t handleUriPostSetDisplayFb(httpd_req_t *req){
+
+static esp_err_t handleUriPostSetFbCommon(httpd_req_t *req, u32 dest){
+    u8 *destBuff;
+
     httpd_resp_set_type(req, "application/json");
 
     if(req->content_len != DISP_FB_SIZE){
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"Frame buffer size invalid\"}");
         return ESP_FAIL;
     }
-
-    if(xSemaphoreTake(displayFbMutex, 0) != pdTRUE){
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"Could not take frame buffer mutex\"}");
+    
+    if(dest == 0x00){
+        destBuff = takeDispFb(0);
+        if(destBuff == NULL){
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"Could not take frame buffer mutex\"}");
+            return ESP_FAIL;
+        }
+    }
+    else if(dest == 0x01){
+        destBuff = sdCardFrameBuff;
+    }
+    else{
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"internal error, invalid dest\"}");
         return ESP_FAIL;
     }
 
-    const size_t buf_sz = 16384;
-    u8 *buf = malloc(buf_sz);
-    u32 displayOffset = 0;
-    u32 stat = 0;
+    const size_t chunkReadSize = 16384;
 
     int remaining = req->content_len;   // total bytes expected
     while(1){
-        int to_read = remaining < buf_sz ? remaining : buf_sz;
+        int to_read = remaining < chunkReadSize ? remaining : chunkReadSize;
         
-        int r = httpd_req_recv(req, (char*)buf, to_read);
+        int r = httpd_req_recv(req, (char*)destBuff, to_read);
         if (r > 0) {
-            stat = setFrameBuffRaw(buf, r, displayOffset);
-            if(stat){
-                break;
-            }
-
-            displayOffset += r;
+            destBuff += r;
             remaining -= r;
         }
         // todo: handle other errors
@@ -329,24 +333,38 @@ static esp_err_t handleUriPostSetDisplayFb(httpd_req_t *req){
         }
     }
     
-    free(buf);
-    xSemaphoreGive(displayFbMutex);
-    
-    if(stat){
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"Frame buffer overflow\"}");
-    }
-    else{
-        httpd_resp_sendstr(req, "{\"stat\": \"ok\"}");
-    }
+    releaseDispFb();
+    httpd_resp_sendstr(req, "{\"stat\": \"ok\"}");
 
     return ESP_OK;
 }
 
-static esp_err_t handleUriPostDisplayFb(httpd_req_t *req){
+
+/**
+ * Set the internal display framebuffer
+ */
+static esp_err_t handleUriPostSetDisplayFb(httpd_req_t *req){
+    return handleUriPostSetFbCommon(req, 0x00);
+}
+
+/**
+ * Set the internal display framebuffer
+ */
+static esp_err_t handleUriPostUploadSdImage(httpd_req_t *req){
+    return handleUriPostSetFbCommon(req, 0x01);
+}
+
+static esp_err_t handleUriPostUpdateDisplay(httpd_req_t *req){
     httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, "{\"stat\": \"ok\"}");
-    dispTrigUpdate();
-    return ESP_OK;
+    u32 stat = dispTrigUpdate();
+    if(stat){
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"updating display, please wait\"}");
+        return ESP_FAIL;
+    }
+    else{
+        httpd_resp_sendstr(req, "{\"stat\": \"ok\"}");
+        return ESP_OK;
+    }
 }
 
 static esp_err_t handleUriPostImageCheckerPattern(httpd_req_t *req){
@@ -358,11 +376,6 @@ static esp_err_t handleUriPostImageCheckerPattern(httpd_req_t *req){
     const cJSON *jCheckSize = NULL;
 
     httpd_resp_set_type(req, "application/json");
-
-    if(xSemaphoreTake(displayFbMutex, 0) != pdTRUE){
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"Could not take frame buffer mutex\"}");
-        return ESP_FAIL;
-    }
 
     int remaining = req->content_len;   // total bytes expected
     recvBuf = malloc(req->content_len);
@@ -397,7 +410,6 @@ static esp_err_t handleUriPostImageCheckerPattern(httpd_req_t *req){
     ret = ESP_OK;
 
 end:
-    xSemaphoreGive(displayFbMutex);
     cJSON_Delete(jRoot);
     free(recvBuf);
     return ret;
@@ -409,6 +421,8 @@ static esp_err_t handleUriSaveImage(httpd_req_t *req){
     char *recvBuf;
     cJSON *jRoot = NULL;
     const cJSON *jImgName = NULL;
+
+    httpd_resp_set_type(req, "application/json");
 
     int remaining = req->content_len;   // total bytes expected
     recvBuf = malloc(req->content_len);
@@ -431,28 +445,19 @@ static esp_err_t handleUriSaveImage(httpd_req_t *req){
         ret = ESP_FAIL;
         goto cleanup;
     }
-    jImgName = cJSON_GetObjectItem(jRoot, "imgName");
+    jImgName = cJSON_GetObjectItem(jRoot, "name");
     if (!cJSON_IsString(jImgName)){
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"JSON invalid: imgName not a string\"}");
         ret = ESP_FAIL;
         goto cleanup;
     }
 
-    httpd_resp_set_type(req, "application/json");
-    if(xSemaphoreTake(displayFbMutex, 0) != pdTRUE){
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"Could not take frame buffer mutex\"}");
-        ret = ESP_FAIL;
-        goto cleanup;
-    }
-    fSysRet fsRet = fileSysSaveImage(jImgName->valuestring, dispGetFb());
-    xSemaphoreGive(displayFbMutex);
-    // todo: status check
-    // reqGlobal = req;
-
+    fSysRet fsRet = fileSysSaveImage(jImgName->valuestring);
     if(fsRet == FILE_SYS_RET_OK){
         httpd_resp_sendstr(req, "{\"stat\": \"ok\"}");
         ret = ESP_OK;
-    } else {
+    }
+    else{
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"unable to save frame buffer to file\"}");
         ret = ESP_FAIL;
     }
@@ -471,6 +476,8 @@ static esp_err_t handleUriLoadImage(httpd_req_t *req){
     cJSON *jRoot = NULL;
     const cJSON *jImgName = NULL;
 
+    httpd_resp_set_type(req, "application/json");
+
     int remaining = req->content_len;   // total bytes expected
     recvBuf = malloc(req->content_len);
     int r = httpd_req_recv(req, (char*)recvBuf, remaining);
@@ -492,34 +499,103 @@ static esp_err_t handleUriLoadImage(httpd_req_t *req){
         ret = ESP_FAIL;
         goto cleanup;
     }
-    jImgName = cJSON_GetObjectItem(jRoot, "imgName");
+    jImgName = cJSON_GetObjectItem(jRoot, "name");
     if (!cJSON_IsString(jImgName)){
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"JSON invalid: imgName not a string\"}");
         ret = ESP_FAIL;
         goto cleanup;
     }
 
-    httpd_resp_set_type(req, "application/json");
-    if(xSemaphoreTake(displayFbMutex, 0) != pdTRUE){
+    u8 *destBuff = takeDispFb(0);
+    if(destBuff == NULL){
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"Could not take frame buffer mutex\"}");
-        ret = ESP_FAIL;
-        goto cleanup;
+        return ESP_FAIL;
     }
-    fSysRet fsRet = fileSysLoadImage(jImgName->valuestring, dispGetFb());
-    xSemaphoreGive(displayFbMutex);
-
-    if(fsRet == FILE_SYS_RET_OK){
+    fSysRet stat = fileSysLoadImage(jImgName->valuestring, destBuff);
+    releaseDispFb();
+    if(stat == FILE_SYS_RET_OK){
         httpd_resp_sendstr(req, "{\"stat\": \"ok\"}");
         ret = ESP_OK;
-    } else {
-        httpd_resp_sendstr(req, "{\"stat\": \"unable to load frame buffer to file\"}");
-        ret = ESP_OK;
+    }
+    else{
+        if(stat == FILE_SYS_NO_FILE_FOUND){
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"image does not exist\"}");
+        }
+        else if(stat == FILE_SYS_INVALID_FILE){
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"invalid image file\"}");
+        }
+        else{
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"error reading file\"}");
+        }
+        ret = ESP_FAIL;
     }
 
 cleanup:
     cJSON_Delete(jRoot);
     free(recvBuf);
     return ret;
+}
+
+static esp_err_t handleUriDeleteImage(httpd_req_t *req){
+    esp_err_t ret;
+    char responseBuff[128];
+    char *recvBuf;
+    cJSON *jRoot = NULL;
+    const cJSON *jImgName = NULL;
+
+    httpd_resp_set_type(req, "application/json");
+
+    int remaining = req->content_len;   // total bytes expected
+    recvBuf = malloc(req->content_len);
+    int r = httpd_req_recv(req, (char*)recvBuf, remaining);
+    if(r < 0){
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"Error while receiving info\"}");
+        ret = ESP_FAIL;
+        goto cleanup;
+    }
+    jRoot = cJSON_Parse(recvBuf);
+
+    if(jRoot == NULL){
+        const char *error_ptr = cJSON_GetErrorPtr();
+        if(error_ptr != NULL){
+            snprintf(responseBuff, 128, "{\"stat\": \"JSON invalid: %s\"}", error_ptr);
+        } else {
+            snprintf(responseBuff, 128, "{\"stat\": \"JSON invalid: unknown\"}");
+        }
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, responseBuff);
+        ret = ESP_FAIL;
+        goto cleanup;
+    }
+    jImgName = cJSON_GetObjectItem(jRoot, "name");
+    if (!cJSON_IsString(jImgName)){
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"JSON invalid: imgName not a string\"}");
+        ret = ESP_FAIL;
+        goto cleanup;
+    }
+
+    fSysRet stat = fileSysDelImage(jImgName->valuestring);
+    if(stat == FILE_SYS_RET_OK){
+        httpd_resp_sendstr(req, "{\"stat\": \"ok\"}");
+        ret = ESP_OK;
+    }
+    else{
+        if(stat == FILE_SYS_NO_FILE_FOUND){
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"image does not exist\"}");
+        }
+        else if(stat == FILE_SYS_INVALID_FILE){
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"invalid image file\"}");
+        }
+        else{
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"error deleting file\"}");
+        }
+        ret = ESP_FAIL;
+    }
+
+cleanup:
+    cJSON_Delete(jRoot);
+    free(recvBuf);
+    return ret;
+
 }
 
 static esp_err_t handle404NotFound(httpd_req_t *req, httpd_err_code_t error){
@@ -725,11 +801,11 @@ void startHttpServer(void){
     httpd_register_uri_handler(server, &uriMatch);
 
     uriMatch.handler = handleUriGetWifiInfo;
-    uriMatch.uri = "/api/v1/wifiInfo";
+    uriMatch.uri = "/api/v1/wifi/info";
     httpd_register_uri_handler(server, &uriMatch);
 
     uriMatch.handler = handleUriGetPmicInfo;
-    uriMatch.uri = "/api/v1/pmicInfo";
+    uriMatch.uri = "/api/v1/pmic";
     httpd_register_uri_handler(server, &uriMatch);
 
     uriMatch.handler = handleUriGetImgAvailable;
@@ -739,32 +815,41 @@ void startHttpServer(void){
     /**** POST commands */
     uriMatch.method = HTTP_POST;
     uriMatch.handler = handleUriPostSetDisplayFb;
-    uriMatch.uri = "/api/v1/setDisplayFb";
+    uriMatch.uri = "/api/v1/disp/setFb";
     httpd_register_uri_handler(server, &uriMatch);
 
-    uriMatch.handler = handleUriPostDisplayFb;
-    uriMatch.uri = "/api/v1/updateDisplay";
+    uriMatch.handler = handleUriPostUpdateDisplay;
+    uriMatch.uri = "/api/v1/disp/update";
     httpd_register_uri_handler(server, &uriMatch);
 
     uriMatch.handler = handleUriPostImageCheckerPattern;
-    uriMatch.uri = "/api/v1/dispCheckPattern";
+    uriMatch.uri = "/api/v1/disp/setCheckPattern";
     httpd_register_uri_handler(server, &uriMatch);
 
     uriMatch.handler = handleUriPostWifiSta;
-    uriMatch.uri = "/api/v1/wifiInfo";
+    uriMatch.uri = "/api/v1/wifi/info";
     httpd_register_uri_handler(server, &uriMatch);
 
     uriMatch.handler = handleUriPostWifiStaConn;
-    uriMatch.uri = "/api/v1/wifiConnectSta";
+    uriMatch.uri = "/api/v1/wifi/connect";
     httpd_register_uri_handler(server, &uriMatch);
 
     uriMatch.handler = handleUriSaveImage;
     uriMatch.uri = "/api/v1/img/save";
     httpd_register_uri_handler(server, &uriMatch);
 
+    uriMatch.handler = handleUriPostUploadSdImage;
+    uriMatch.uri = "/api/v1/img/upload";
+    httpd_register_uri_handler(server, &uriMatch);
+
     uriMatch.handler = handleUriLoadImage;
     uriMatch.uri = "/api/v1/img/load";
     httpd_register_uri_handler(server, &uriMatch);
+
+    uriMatch.handler = handleUriDeleteImage;
+    uriMatch.uri = "/api/v1/img/delete";
+    httpd_register_uri_handler(server, &uriMatch);
+
 
     // todo: delete image
 }

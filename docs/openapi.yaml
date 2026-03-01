@@ -12,6 +12,12 @@ servers:
         description: "The host IP of the esp32"
 
 components:
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        stat:
+          type: string
   responses:
     PostOKResponse:
       description: "A normal 200 code response from POST requests"
@@ -23,6 +29,16 @@ components:
               stat:
                 type: string
                 const: "ok"
+    PostErrorResponse:
+      description: "Some error response (400, 500, or more) from a POST requests"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              stat:
+                type: string
+                description: "The error message"
     Generic404Error:
       description: "A generic 404 error code when the URL is not found"
       content:
@@ -69,9 +85,11 @@ paths:
                     type: string
                     const: "I'm a teapot"
 
-  /dispFbRaw:
+  /disp/setFb:
     post:
       summary: To upload a raw framebuffer to the device and update the display
+      tags:
+        - Display
       requestBody:
         required: true
         content:
@@ -87,32 +105,28 @@ paths:
         "200":
           $ref: '#/components/responses/PostOKResponse'
         "400":
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  stat:
-                    description: A description of the error that occurred
-                    type: string
-                examples:
-                  - stat: "Frame buffer size invalid"
+          $ref: '#/components/responses/PostErrorResponse'
         "500":
-          description: Internal Error
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  stat:
-                    description: A description of the error that occurred
-                    type: string
-                examples: 
-                  - stat: "Could not take frame buffer mutex"
-                  - stat: "Frame buffer overflow"
-  /dispCheckPattern:
+          $ref: '#/components/responses/PostErrorResponse'
+
+  /disp/update:
     post:
+      summary: "Call this to update the display with whatever is in the framebuffer"
+      tags:
+        - Display
+      responses:
+        "200":
+          $ref: '#/components/responses/PostOKResponse'
+        "400":
+          $ref: '#/components/responses/PostErrorResponse'
+        "500":
+          $ref: '#/components/responses/PostErrorResponse'
+
+  /disp/setCheckPattern:
+    post:
+      summary: "Sets the display framebuffer to a checker pattern. Used for debugging mainly"
+      tags:
+        - Display
       requestBody:
         required: true
         content:
@@ -128,12 +142,17 @@ paths:
       responses:
         "200":
           $ref: '#/components/responses/PostOKResponse'
+        "400":
+          $ref: '#/components/responses/PostErrorResponse'
   
-  /wifiInfo:
+  /wifi/info:
     get:
+      summary: "Gets the stored WiFi info and the current connection state"
+      tags:
+        - wifi
       responses:
         "200":
-          description: Wifi information that is currently connected
+          description: "Wifi information that is currently connected"
           content:
             application/json:
               schema:
@@ -161,6 +180,9 @@ paths:
                     staSSID: "My Wifi Network"
                     staPass: "very safe pass"
     post:
+      summary: "Sets the WiFi SSID and password for the station to connect to"
+      tags:
+        - wifi
       requestBody:
         required: true
         content:
@@ -178,65 +200,174 @@ paths:
         "200":
           $ref: '#/components/responses/PostOKResponse'
         "400":
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  stat:
-                    description: A description of the error that occurred
-                    type: string
-                examples:
-                  - stat: "Frame buffer size invalid"
+          $ref: '#/components/responses/PostErrorResponse'
         "500":
-          description: Internal Error
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  stat:
-                    description: A description of the error that occurred
-                    type: string
-                examples: 
-                  - stat: "Could not take frame buffer mutex"
-                  - stat: "Frame buffer overflow"
-  /wifiConnectSta:
+          $ref: '#/components/responses/PostErrorResponse'
+
+  /wifi/connect:
     post:
-      description: "Set this to connect to the WiFi network stored"
+      summary: "Set this to connect to the WiFi network stored"
+      tags:
+        - wifi
       responses:
         "200":
           $ref: '#/components/responses/PostOKResponse'
-  /pmicInfo:
+  
+  /pmic:
     get:
-      description: "Gets power information, such as battery change, voltages, etc"
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              stat:
-                type: string
-                const: "ok"
-              battVolt:
-                type: integer
-                description: "The battery voltage, in volts"
-              sysVolt:
-                type: integer
-                description: "The system voltage, in volts"
-              vBusVolt:
-                type: integer
-                description: "The usb voltage, in volts"
-              battPercentage:
-                type: integer
-                description: "The battery percentage"
-              vBusGood:
-                type: oo
-                description: "If usb power is present"
-              battPresent:
-                type: oo
-                description: "If a battery is present"
-              currLimited:
-                type: bool
-                description: "If currently is limited by the pmic"
+      summary: "Gets power information, such as battery change, voltages, etc"
+      responses:
+        "200":
+          description: "Power information"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stat:
+                    type: string
+                    const: "ok"
+                  battVolt:
+                    type: integer
+                    description: "The battery voltage, in volts"
+                  sysVolt:
+                    type: integer
+                    description: "The system voltage, in volts"
+                  vBusVolt:
+                    type: integer
+                    description: "The usb voltage, in volts"
+                  battPercentage:
+                    type: integer
+                    description: "The battery percentage"
+                  vBusGood:
+                    type: oo
+                    description: "If usb power is present"
+                  battPresent:
+                    type: oo
+                    description: "If a battery is present"
+                  currLimited:
+                    type: bool
+                    description: "If currently is limited by the pmic"
+  /img/available:
+    get:
+      summary: "Gets all available images on the SD card"
+      tags:
+        - Image Management
+      responses:
+        "200":
+          description: |
+            A JSON containing all image names.
+            Note that the .RAW extension is added on. This should not be used in other requests, it's a todo to remove
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stat:
+                    type: string
+                    const: "ok"
+                  img:
+                    type: array
+                    description: "An array of all available images on the card. May be empty"
+                examples:
+                  - stat: "ok"
+                    img:
+                      - "Image1.RAW"
+                      - "Image2.RAW"
+        "500":
+          $ref: '#/components/responses/PostErrorResponse'
+
+  /img/save:
+    post:
+      summary: "Saves an image uploaded (see /img/upload) unto the SD card"
+      tags:
+        - Image Management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: "The image name to save as"
+      responses:
+        "200":
+          $ref: '#/components/responses/PostOKResponse'
+        "400":
+          $ref: '#/components/responses/PostErrorResponse'
+        "500":
+          $ref: '#/components/responses/PostErrorResponse'
+
+  /img/upload:
+    post:
+      summary: "To upload an image to a buffer to be saved (see /img/save)"
+      tags:
+        - Image Management
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+              description: |
+                A 192000 byte payload which is the frame buffer
+                Each byte of the frame buffer is 2 pixels. Each pixel can have the values
+                [0, 1, 2, 3, 5, or]
+      responses:
+        "200":
+          $ref: '#/components/responses/PostOKResponse'
+        "400":
+          $ref: '#/components/responses/PostErrorResponse'
+        "500":
+          $ref: '#/components/responses/PostErrorResponse'
+
+  /img/load:
+    post:
+      summary: "To load an image from the SD card to the display's buffer"
+      tags:
+        - Image Management
+      description: |
+        To load an image from the SD card to the display's buffer.
+        This does not automatically refresh the display. For that, call /disp/update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: "The image name to load"
+      responses:
+        "200":
+          $ref: '#/components/responses/PostOKResponse'
+        "400":
+          $ref: '#/components/responses/PostErrorResponse'
+        "500":
+          $ref: '#/components/responses/PostErrorResponse'
+  /img/delete:
+    post:
+      summary: "To delete an image from the sd card"
+      tags:
+        - Image Management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: "The image name to load"
+      responses:
+        "200":
+          $ref: '#/components/responses/PostOKResponse'
+        "400":
+          $ref: '#/components/responses/PostErrorResponse'
+        "500":
+          $ref: '#/components/responses/PostErrorResponse'

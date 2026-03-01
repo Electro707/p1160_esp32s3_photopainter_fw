@@ -15,12 +15,10 @@ extern spi_device_handle_t dispSpi;             // global spi device
 extern i2c_master_bus_handle_t i2cHandle;       // global i2c handler
 extern sdmmc_card_t sdCard;                     // global sdcard handler
 
-extern SemaphoreHandle_t displayFbMutex;        // mutex for display updating
-
 extern pmicTelemetry pmicTelem;                        // global pmic telemetry struct
                                                 // todo: move it so a dedicated function returns a pointer to it or None if busy
 extern SemaphoreHandle_t pmicTelemetryMutex;           // mutex for pmic telemetry
 
-void dispTrigUpdate(void);
+u32 dispTrigUpdate(void);
 
 #endif

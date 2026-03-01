@@ -3,6 +3,8 @@
 
 #include <cJSON.h>
 #include "common.h"
+#include "eink.h"
+#include "ff.h"
 
 #define IMAGE_DIR       "img"
 
@@ -17,6 +19,11 @@ typedef enum{
     FILE_SYS_NO_IMG_DIR,            // the image directory is missing
     FILE_SYS_INVALID_FILE,          // the file to be loaded is invalid, for example an image file isn't of the right size
 }fSysRet;
+
+/**
+ * The local image buffer. Right now only used to buffer what to write to the SD card
+ */
+extern u8 sdCardFrameBuff[DISP_FB_SIZE];
 
 /**
  * Initializes the file system
@@ -39,8 +46,23 @@ fSysRet mountFs(void);
  */
 fSysRet fileSysGetAvailableImages(cJSON *jsonArr);
 
+/**
+ * Returns 0 if the image name given is a valid and available file
+ */
+fSysRet fileSysIsImageValid(const char *imgName);
+
+fSysRet fileSysOpenImage(const char *imgName, FIL *file);
+
 fSysRet fileSysLoadImage(const char* imgName, u8 *datOut);
-fSysRet fileSysSaveImage(const char* imgName, u8 *dat);
+
+/**
+ * Saves the local image buffer (sdCardFrameBuff) to an image file
+ */
+fSysRet fileSysSaveImage(const char* imgName);
+
+/**
+ * Deletes an image file
+ */
 fSysRet fileSysDelImage(const char *imgName);
 
 #endif

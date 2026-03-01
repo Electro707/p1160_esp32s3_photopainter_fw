@@ -1,10 +1,13 @@
 
 #include <string.h>
 #include "driver/gpio.h"
+#include "esp_log.h"
 #include "eink.h"
 #include "driver/spi_master.h"
 #include "main.h"
 #include "common.h"
+#include "fileSys.h"
+#include "ff.h"
 
 #define RESET_DISPLAY() gpio_set_level(IO_DISP_RST, 0)
 #define UNRST_DISPLAY() gpio_set_level(IO_DISP_RST, 1)
@@ -20,12 +23,15 @@
 // because of the SPI's 18-bit limitation in size, split this up so each
 // transaction takes 32kB (256kb) of data, which is split across 6 transactions,
 // making up the (800*480*4)/8 bytes required
-#define TRANSFER_SIZE_BYTES   32000
-#define TRANSFER_SIZE_BITS   (TRANSFER_SIZE_BYTES*8)
-#define TRANSFER_N      6
+// this is defined as 80 pixels tall by the display's width
+#define TRANSFER_SIZE_BYTES     32000
+#define TRANSFER_SIZE_BITS      (TRANSFER_SIZE_BYTES*8)
+#define TRANSFER_N              6
 
+const char *TAG = "eink";
 
-DMA_ATTR static u8 dispFrameBuff[DISP_FB_SIZE];
+WORD_ALIGNED_ATTR EXT_RAM_BSS_ATTR static u8 dispFrameBuff[DISP_FB_SIZE];
+SemaphoreHandle_t displayFbMutex;
 
 // spi transaction settings
 static spi_transaction_t spiTransactSett;
@@ -77,6 +83,8 @@ void dispBeginCmd(u8 cmd){
 
 
 void dispInit(void){
+    displayFbMutex = xSemaphoreCreateMutex();
+
     spi_device_acquire_bus(dispSpi, portMAX_DELAY);
 
     memset(&spiTransactSett, 0 ,sizeof(spiTransactSett));
@@ -146,7 +154,7 @@ void dispInit(void){
     spiSendAndWait(0x00);
     CS_RELEASE();
 
-    dispBeginCmd(0x61);
+    dispBeginCmd(0x61);         // <- this seems like the cmd to set the frame pointer? or size, not sure!
     spiSendAndWait(0x03);
     spiSendAndWait(0x20);
     spiSendAndWait(0x01);
@@ -165,18 +173,22 @@ void dispInit(void){
     dispWaitBusy();         //waiting for the electronic paper IC to release the idle signal
 }
 
-u8 *dispGetFb(void){
-    return dispFrameBuff;
-}
-
 void dispFillColor(dispColor_e color){
     u8 colorM = (color << 4) | color;
-    memset(dispFrameBuff, colorM, sizeof(dispFrameBuff));
+    u8 *fb = takeDispFb(portMAX_DELAY);
+    if(fb != NULL){
+        memset(dispFrameBuff, colorM, sizeof(dispFrameBuff));
+        releaseDispFb();
+    }
 }
 
 void dispCheckerPattern(u32 checkerSizeLog2){
     u32 color;
     u32 pixelIdx = 0;
+    u8 *fb = takeDispFb(portMAX_DELAY);
+    if(fb == NULL){
+        return;
+    }
     for(u32 y=0;y<DISPLAY_H;y++){
         for(u32 x=0;x<DISPLAY_W;x++){
             color = (x >> checkerSizeLog2) + (y >> checkerSizeLog2);
@@ -186,14 +198,15 @@ void dispCheckerPattern(u32 checkerSizeLog2){
             color &= 0x0F;
             // if we are on the even pixels, shift by 4 and OR with previous color. Otherwise just set the 4-bit color
             if((pixelIdx & 1) == 0){  
-                dispFrameBuff[pixelIdx >> 1] = color;
+                fb[pixelIdx >> 1] = color;
             } else {
-                dispFrameBuff[pixelIdx >> 1] |= (color << 4);
+                fb[pixelIdx >> 1] |= (color << 4);
             }
             
             pixelIdx++;
         }
     }
+    releaseDispFb();
 }
 
 int setFrameBuffRaw(u8 *data, u32 len, u32 offset){
@@ -206,9 +219,12 @@ int setFrameBuffRaw(u8 *data, u32 len, u32 offset){
 }
 
 void dispUpdate(void){
+    u8 *dat = takeDispFb(portMAX_DELAY);
+    if(dat == NULL){
+        return;
+    }
     dispBeginCmd(0x10);
-    u8 *dat = dispFrameBuff;
-    spiTransactSett.flags = SPI_TRANS_DMA_BUFFER_ALIGN_MANUAL;
+    spiTransactSett.flags = SPI_TRANS_DMA_BUFFER_ALIGN_MANUAL | SPI_TRANS_DMA_USE_PSRAM;
     spiTransactSett.length = TRANSFER_SIZE_BITS;
     for(u32 n=0; n < TRANSFER_N; n++){
         spiTransactSett.tx_buffer = dat;
@@ -217,9 +233,22 @@ void dispUpdate(void){
     }
     CS_RELEASE();
     dispWaitBusy();
+    releaseDispFb();
 
     dispBeginCmd(0x12);
     spiSendAndWait(0x00);
     CS_RELEASE();
     dispWaitBusy();
+}
+
+u8* takeDispFb(TickType_t timeout){
+    u32 stat = xSemaphoreTake(displayFbMutex, timeout);
+    if(stat == pdFALSE){
+        return NULL;
+    }
+    return dispFrameBuff;
+}
+
+void releaseDispFb(void){
+    xSemaphoreGive(displayFbMutex);
 }

@@ -39,16 +39,16 @@ spi_device_handle_t dispSpi;        // global spi device
 i2c_master_bus_handle_t i2cHandle;
 sdmmc_card_t sdCard;
 
-// the display updater task starter/handler
-TaskHandle_t pmicTelemTask_h;
-TaskHandle_t dispTask_h;
-SemaphoreHandle_t displayFbMutex;
-
 pmicTelemetry pmicTelem;
+
+// the display updater task starter/handler
+TaskHandle_t dispTask_h;
+
+TaskHandle_t pmicTelemTask_h;
 SemaphoreHandle_t pmicTelemetryMutex;
 
-void pmicTelemetryUpdate(void *args);
-void dispFreeRtosUpdateLoop(void *args);
+void taskPmicTelemetry(void *args);
+void taskDispUpdate(void *args);
 
 static const char *TAG = "main";
 
@@ -59,7 +59,8 @@ void mcuInit(void){
             .min_freq_mhz = 20,
             .light_sleep_enable = false
     };
-    ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
+    // todo: enable when fw is in a more stable state, sort of slows down debugging
+    // ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
 
     // init IO
     gpio_config_t gpio_conf;
@@ -165,7 +166,6 @@ void app_main(void){
     }
 
     memset(&pmicTelem, 0, sizeof(pmicTelem));
-    displayFbMutex = xSemaphoreCreateMutex();
     pmicTelemetryMutex = xSemaphoreCreateMutex();
 
     wifiInit();
@@ -173,18 +173,27 @@ void app_main(void){
 
     printf("Done with init\n");
 
-    xTaskCreatePinnedToCore(dispFreeRtosUpdateLoop, "display", 4096, NULL, 4,
+    xTaskCreatePinnedToCore(taskDispUpdate, "display", 4096, NULL, 4,
                             &dispTask_h, 0);
 
-    xTaskCreatePinnedToCore(pmicTelemetryUpdate, "pmicTelem", 4096, NULL, 4,
+    xTaskCreatePinnedToCore(taskPmicTelemetry, "pmicTelem", 4096, NULL, 4,
                             &pmicTelemTask_h, 0);
 }
 
-void dispTrigUpdate(void){
-    xTaskNotifyGive(dispTask_h);
+u32 dispTrigUpdate(void){
+    u32 prevVal;
+    xTaskNotifyAndQuery(dispTask_h, 0, eIncrement, &prevVal);
+    if(prevVal != 0){
+        return 1;
+    }
+    return 0;
 }
 
-void pmicTelemetryUpdate(void *args){
+/**
+ * A task that reads telemetry from the power IC
+ * Reads every 2sec
+ */
+void taskPmicTelemetry(void *args){
     for(EVER){
         xSemaphoreTake(pmicTelemetryMutex, portMAX_DELAY);
         pmicGetTelemetry(&pmicTelem);
@@ -193,11 +202,17 @@ void pmicTelemetryUpdate(void *args){
     }
 }
 
-void dispFreeRtosUpdateLoop(void *args){
+/**
+ * A task that updates the display
+ * This task only "runs" when the task is notified, otherwise halts
+ * 
+ * A task notification value determines if it's updated from a frame buffer, or from
+ * an image name on the sd card (from variable dispTaskFromSdName)
+ */
+void taskDispUpdate(void *args){
     for(EVER){
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        xSemaphoreTake(displayFbMutex, portMAX_DELAY);
+        xTaskNotifyStateClear(NULL);
+        xTaskNotifyWait(ULONG_MAX, 0, NULL, portMAX_DELAY);
         dispUpdate();
-        xSemaphoreGive(displayFbMutex);
     }
 }

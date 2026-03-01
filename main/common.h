@@ -34,6 +34,8 @@
 
 #define MAX_WIFI_INFO_STRLEN       32
 
+#define MAX_IMAGE_NAME_LEN      64
+
 ////////// Other defines
 #define EVER    ;;
 

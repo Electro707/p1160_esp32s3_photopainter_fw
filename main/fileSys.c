@@ -12,6 +12,8 @@ static FATFS fs;     /* Pointer to the filesystem object */
 
 static const char *TAG = "fileSys";
 
+WORD_ALIGNED_ATTR EXT_RAM_BSS_ATTR u8 sdCardFrameBuff[DISP_FB_SIZE];
+
 static void getImagePath(const char *imgName, char *outName, u32 maxLen){
     snprintf(outName, maxLen, IMAGE_DIR "/%s.raw", imgName);
 }
@@ -84,13 +86,10 @@ fSysRet fileSysGetAvailableImages(cJSON *jsonArr){
     return FILE_SYS_RET_OK;
 }
 
-fSysRet fileSysLoadImage(const char* imgName, u8 *datOut){
-    FRESULT fsStat;
-    FIL file;
-    char imagePath[128];
-    UINT nRead;
+fSysRet fileSysIsImageValid(const char *imgName){
     FILINFO fno;
-    fSysRet ret = FILE_SYS_RET_OK;
+    FRESULT fsStat;
+    char imagePath[128];
 
     getImagePath(imgName, imagePath, sizeof(imagePath));
 
@@ -103,6 +102,41 @@ fSysRet fileSysLoadImage(const char* imgName, u8 *datOut){
         ESP_LOGW(TAG, "File size is not that of a frame buffer, exiting!");
         return FILE_SYS_INVALID_FILE;
     }
+
+    return FILE_SYS_RET_OK;
+}
+
+fSysRet fileSysOpenImage(const char *imgName, FIL *file){
+    FRESULT fsStat;
+    fSysRet stat;
+    char imagePath[128];
+
+    stat = fileSysIsImageValid(imgName);
+    if(stat) return stat;
+
+    // yes the last function already got the name...too bad!
+    getImagePath(imgName, imagePath, sizeof(imagePath));
+    fsStat = f_open(file, imagePath, FA_READ);
+    if(fsStat != FR_OK){
+        ESP_LOGW(TAG, "Unable to open file for writing");
+        return FILE_SYS_UNABLE_OPEN;
+    }
+
+    return FILE_SYS_RET_OK;
+}
+
+fSysRet fileSysLoadImage(const char* imgName, u8 *datOut){
+    FRESULT fsStat;
+    FIL file;
+    char imagePath[128];
+    UINT nRead;
+    fSysRet ret = FILE_SYS_RET_OK;
+
+    ret = fileSysIsImageValid(imgName);
+    if(ret){
+        return ret;
+    }
+    getImagePath(imgName, imagePath, sizeof(imagePath));
 
     fsStat = f_open(&file, imagePath, FA_READ);
     if(fsStat != FR_OK){
@@ -119,7 +153,7 @@ fSysRet fileSysLoadImage(const char* imgName, u8 *datOut){
     return ret;
 }
 
-fSysRet fileSysSaveImage(const char* imgName, u8 *dat){
+fSysRet fileSysSaveImage(const char* imgName){
     FRESULT fsStat;
     FIL file;
     char imagePath[128];
@@ -135,7 +169,7 @@ fSysRet fileSysSaveImage(const char* imgName, u8 *dat){
         return FILE_SYS_UNABLE_OPEN;
     }
 
-    fsStat = f_write(&file, dat, DISP_FB_SIZE, &nWritten);
+    fsStat = f_write(&file, sdCardFrameBuff, DISP_FB_SIZE, &nWritten);
     if(nWritten != DISP_FB_SIZE){
         ESP_LOGW(TAG, "Did it completely write the file");
         return FILE_SYS_UNABLE_WRITE;
@@ -151,15 +185,15 @@ fSysRet fileSysDelImage(const char *imgName){
     FRESULT fsStat;
     char imagePath[128];
     FILINFO fno;
+    fSysRet ret;
 
+    ret = fileSysIsImageValid(imgName);
+    if(ret){
+        return ret;
+    }
     getImagePath(imgName, imagePath, sizeof(imagePath));
 
-    fsStat = f_stat(imgName, &fno);
-    if(fsStat != FR_OK){
-        ESP_LOGW(TAG, "File does not exist, exiting");
-        return FILE_SYS_NO_FILE_FOUND;
-    }
-    fsStat = f_unlink(imgName);
+    fsStat = f_unlink(imagePath);
     if(fsStat != FR_OK){
         ESP_LOGW(TAG, "Unable to delete image file");
         return FILE_SYS_RET_FAIL;

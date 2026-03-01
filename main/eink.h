@@ -1,6 +1,7 @@
 #ifndef EINK_H
 #define EINK_H
 
+#include "freertos/FreeRTOS.h"
 #include "common.h"
 
 #define DISPLAY_W   800
@@ -47,10 +48,25 @@ void dispCheckerPattern(u32 checkerSizeLog2);
 int setFrameBuffRaw(u8 *data, u32 len, u32 offset);
 
 /**
- * Updates the panel. Blocking function
+ * Updates the panel
+ * Blocking function
  */
 void dispUpdate(void);
 
-u8 *dispGetFb(void);
+/**
+ * Takes ownership of the display framebuffer
+ *
+ * NOTE: A call to :func:releaseDispFb MUST be called when done with the framebuffer,
+ *      otherwise the firmware will cease to function normally\
+ *
+ * @param timeout: The RTOS timeout to acquire the mutex
+ * @return The pointer to the buffer if successful, NULL if unable to take the mutex
+ */
+u8* takeDispFb(TickType_t timeout);
+
+/**
+ * Releases the framebuffer acquired from :func:takeDispFb
+ */
+void releaseDispFb(void);
 
 #endif

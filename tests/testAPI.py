@@ -66,46 +66,79 @@ def setInfo(ctx: click.Context, wifi_ssid, wifi_pass) -> None:
 def display(ctx: click.Context):
     pass
 
-@display.command()
+@display.command('checker')
 @click.option('-c', '--checker-size', default=3, required=True, show_default=True, help='The checker pattern size as a power of 2 (so 3=8pixels)')
 @click.pass_context
 def checkerPattern(ctx: click.Context, checker_size: int) -> None:
-    url = createUrl(ctx.obj['url'], 'dispCheckPattern')
+    """
+    Sets the display framebuffer to a checker pattern. Used for testing
+    """
+    url = createUrl(ctx.obj['url'], 'disp/setCheckPattern')
     commonApiRequest(url, 'POST', {'checkSize': checker_size})
 
 @display.command()
-@click.option('-i', '--image', type=Path, required=True, show_default=True, help='The image to load. Could be anything PIL supports')
+@click.argument('image', type=Path)
 @click.pass_context
 def setFb(ctx: click.Context, image: Path) -> None:
+    """
+    Uploads the image given to the device's framebuffer
+    """
     rawFb = imageProcessor.createFBFromImage(image)
-    url = createUrl(ctx.obj['url'], 'setDisplayFb')
+    url = createUrl(ctx.obj['url'], 'disp/setFb')
     commonApiRequest(url, 'POST', rawFb)
 
-@display.command()
+@display.command(name='update')
 @click.pass_context
 def updateDisplay(ctx: click.Context) -> None:
-    url = createUrl(ctx.obj['url'], 'updateDisplay')
+    """
+    Updates the display from the internal framebuffer
+    """
+    url = createUrl(ctx.obj['url'], 'disp/update')
     commonApiRequest(url, 'POST')
 
-@display.command()
+@display.command(name='getAvailable')
 @click.pass_context
 def getAvailableImg(ctx: click.Context) -> None:
+    """
+    Gets all available images from the device
+    """
     url = createUrl(ctx.obj['url'], 'img/available')
     commonApiRequest(url, 'GET')
 
-@display.command()
-@click.option('-i', '--image', type=str, required=True, show_default=True, help='The image name to save on the device')
+@display.command(name='uploadImage')
+@click.argument('image', type=Path)
+@click.argument('name', type=str)
 @click.pass_context
-def saveImage(ctx: click.Context, image: str) -> None:
-    url = createUrl(ctx.obj['url'], 'img/save')
-    commonApiRequest(url, 'POST', {'imgName': image})
+def uploadImage(ctx: click.Context, image: Path, name: str) -> None:
+    """
+    Uploads the image IMAGE given to the device and saves it as a NAME
+    """
+    rawFb = imageProcessor.createFBFromImage(image)
+    url = createUrl(ctx.obj['url'], 'img/upload')
+    commonApiRequest(url, 'POST', rawFb)
 
-@display.command()
-@click.option('-i', '--image', type=str, required=True, show_default=True, help='The image name to save on the device')
+    url = createUrl(ctx.obj['url'], 'img/save')
+    commonApiRequest(url, 'POST', {'name': name})
+
+@display.command(name='loadImage')
+@click.argument('name', type=str)
 @click.pass_context
-def loadImage(ctx: click.Context, image: str) -> None:
+def loadImage(ctx: click.Context, name: str) -> None:
+    """
+    Loads an image on-device with the name NAME
+    """
     url = createUrl(ctx.obj['url'], 'img/load')
-    commonApiRequest(url, 'POST', {'imgName': image})
+    commonApiRequest(url, 'POST', {'name': name})
+
+@display.command(name='deleteImage')
+@click.argument('name', type=str)
+@click.pass_context
+def delImage(ctx: click.Context, name: str) -> None:
+    """
+    Deletes an image on-device with the name NAME
+    """
+    url = createUrl(ctx.obj['url'], 'img/delete')
+    commonApiRequest(url, 'POST', {'name': name})
 
 if __name__ == "__main__":
     cli(obj={})
