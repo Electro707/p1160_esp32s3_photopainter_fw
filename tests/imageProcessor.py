@@ -8,8 +8,11 @@ def createFBFromImage(imagePath: str) -> bytes:
     targW, targH = 800, 480
 
     # Computed scaling
-    scale_ratio = min(targW / imgW, targH / imgH)
+    if imgH > imgW:
+        img = img.transpose(Image.TRANSPOSE)
+        imgW, imgH = img.size
 
+    scale_ratio = min(targW / imgW, targH / imgH)
     # Calculate the size after scaling
     resized_width = int(imgW * scale_ratio)
     resized_height = int(imgH * scale_ratio)
@@ -22,6 +25,9 @@ def createFBFromImage(imagePath: str) -> bytes:
     left = (targW - resized_width) // 2
     top = (targH - resized_height) // 2
     resized_image.paste(output_image, (left, top))
+
+    resized_image = resized_image.transpose(Image.ROTATE_180)
+
 
     # Create a palette object
     pal_image = Image.new("P", (1, 1))

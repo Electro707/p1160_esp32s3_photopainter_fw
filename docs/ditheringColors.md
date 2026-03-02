@@ -12,6 +12,10 @@ There is some heuristics I had to do, mainly in the exposure of the image. As th
 
 With a test image, below is a before-and-after comparison of the pure color pallette and my version. I think my version better represents the color on the input image on the display
 
-TODO: IMAGE COMPARISON
+
+| Default Dithering Colors | My Dithering Colors|
+| ---|---|
+| ![test1, default dithering](.img/test1_dither_default.jpg) | ![test1, my dithering](.img/test1_dither_custom.jpg) |
+
 
 The pallette color used are in [my imageProcessor.py file](/imageBuilder/imageProcessor.py)

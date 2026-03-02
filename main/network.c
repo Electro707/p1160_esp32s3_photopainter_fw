@@ -46,6 +46,41 @@ void wifiStartAP(void);
 void wifiStartSTA(void *arg);
 void saveWifiNvmConf(void);
 
+/**
+ * Internal helper function that receives a JSON content from the request, and parses
+ *  it to a cJSON object.
+ * If this function returns anything but ESP_OK, it also put out the error http response, so the caller
+ * doesn't have to do anything beyond cleanup and exist
+ */
+esp_err_t getJsonFromReq(httpd_req_t *req, char **contextBuff, cJSON **jRoot){
+    char responseBuff[128];
+    esp_err_t ret = ESP_OK;
+    
+    int remaining = req->content_len;   // total bytes expected
+    *contextBuff = malloc(req->content_len);
+    int r = httpd_req_recv(req, (char*)*contextBuff, remaining);
+    if(r < 0){
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"Error while receiving info\"}");
+        ret = ESP_FAIL;
+    }
+    else{
+        *jRoot = cJSON_Parse(*contextBuff);
+
+        if(*jRoot == NULL){
+            const char *error_ptr = cJSON_GetErrorPtr();
+            if(error_ptr != NULL){
+                snprintf(responseBuff, 128, "{\"stat\": \"JSON invalid: %s\"}", error_ptr);
+            } else {
+                snprintf(responseBuff, 128, "{\"stat\": \"JSON invalid: unknown\"}");
+            }
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, responseBuff);
+            ret = ESP_FAIL;
+        }
+    }
+
+    return ret;
+}
+
 /********** URI match handlers **********/
 static esp_err_t handleUriGetVersion(httpd_req_t *req){
     char tmp[128];
@@ -369,83 +404,46 @@ static esp_err_t handleUriPostUpdateDisplay(httpd_req_t *req){
 
 static esp_err_t handleUriPostImageCheckerPattern(httpd_req_t *req){
     esp_err_t ret;
-    char *recvBuf;
-    char responseBuff[128];
-
+    char *contextBuff;
     cJSON *jRoot = NULL;
-    const cJSON *jCheckSize = NULL;
 
     httpd_resp_set_type(req, "application/json");
-
-    int remaining = req->content_len;   // total bytes expected
-    recvBuf = malloc(req->content_len);
-    int r = httpd_req_recv(req, (char*)recvBuf, remaining);
-    if(r < 0){
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"Error while receiving info\"}");
+    
+    if(getJsonFromReq(req, &contextBuff, &jRoot)){
         ret = ESP_FAIL;
-        goto end;
+        goto cleanup;
     }
-    jRoot = cJSON_Parse(recvBuf);
 
-    if(jRoot == NULL){
-        const char *error_ptr = cJSON_GetErrorPtr();
-        if(error_ptr != NULL){
-            snprintf(responseBuff, 128, "{\"stat\": \"JSON invalid: %s\"}", error_ptr);
-        } else {
-            snprintf(responseBuff, 128, "{\"stat\": \"JSON invalid: unknown\"}");
-        }
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, responseBuff);
-        ret = ESP_FAIL;
-        goto end;
-    }
-    jCheckSize = cJSON_GetObjectItem(jRoot, "checkSize");
+    const cJSON *jCheckSize = cJSON_GetObjectItem(jRoot, "checkSize");
     if (!cJSON_IsNumber(jCheckSize)){
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"JSON invalid: checkSize not an integer\"}");
         ret = ESP_FAIL;
-        goto end;
+        goto cleanup;
     }
 
     dispCheckerPattern(jCheckSize->valueint);
     httpd_resp_sendstr(req, "{\"stat\": \"ok\"}");
     ret = ESP_OK;
 
-end:
+cleanup:
     cJSON_Delete(jRoot);
-    free(recvBuf);
+    free(contextBuff);
     return ret;
 }
 
 static esp_err_t handleUriSaveImage(httpd_req_t *req){
     esp_err_t ret;
-    char responseBuff[128];
-    char *recvBuf;
+    char *contextBuff;
     cJSON *jRoot = NULL;
-    const cJSON *jImgName = NULL;
 
     httpd_resp_set_type(req, "application/json");
 
-    int remaining = req->content_len;   // total bytes expected
-    recvBuf = malloc(req->content_len);
-    int r = httpd_req_recv(req, (char*)recvBuf, remaining);
-    if(r < 0){
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"Error while receiving info\"}");
+    if(getJsonFromReq(req, &contextBuff, &jRoot)){
         ret = ESP_FAIL;
         goto cleanup;
     }
-    jRoot = cJSON_Parse(recvBuf);
 
-    if(jRoot == NULL){
-        const char *error_ptr = cJSON_GetErrorPtr();
-        if(error_ptr != NULL){
-            snprintf(responseBuff, 128, "{\"stat\": \"JSON invalid: %s\"}", error_ptr);
-        } else {
-            snprintf(responseBuff, 128, "{\"stat\": \"JSON invalid: unknown\"}");
-        }
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, responseBuff);
-        ret = ESP_FAIL;
-        goto cleanup;
-    }
-    jImgName = cJSON_GetObjectItem(jRoot, "name");
+    const cJSON *jImgName = cJSON_GetObjectItem(jRoot, "name");
     if (!cJSON_IsString(jImgName)){
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"JSON invalid: imgName not a string\"}");
         ret = ESP_FAIL;
@@ -464,42 +462,24 @@ static esp_err_t handleUriSaveImage(httpd_req_t *req){
 
 cleanup:
     cJSON_Delete(jRoot);
-    free(recvBuf);
+    free(contextBuff);
     return ret;
 }
 
 
 static esp_err_t handleUriLoadImage(httpd_req_t *req){
     esp_err_t ret;
-    char responseBuff[128];
-    char *recvBuf;
+    char *contextBuff;
     cJSON *jRoot = NULL;
-    const cJSON *jImgName = NULL;
 
     httpd_resp_set_type(req, "application/json");
 
-    int remaining = req->content_len;   // total bytes expected
-    recvBuf = malloc(req->content_len);
-    int r = httpd_req_recv(req, (char*)recvBuf, remaining);
-    if(r < 0){
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"Error while receiving info\"}");
+    if(getJsonFromReq(req, &contextBuff, &jRoot)){
         ret = ESP_FAIL;
         goto cleanup;
     }
-    jRoot = cJSON_Parse(recvBuf);
 
-    if(jRoot == NULL){
-        const char *error_ptr = cJSON_GetErrorPtr();
-        if(error_ptr != NULL){
-            snprintf(responseBuff, 128, "{\"stat\": \"JSON invalid: %s\"}", error_ptr);
-        } else {
-            snprintf(responseBuff, 128, "{\"stat\": \"JSON invalid: unknown\"}");
-        }
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, responseBuff);
-        ret = ESP_FAIL;
-        goto cleanup;
-    }
-    jImgName = cJSON_GetObjectItem(jRoot, "name");
+    const cJSON *jImgName = cJSON_GetObjectItem(jRoot, "name");
     if (!cJSON_IsString(jImgName)){
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"JSON invalid: imgName not a string\"}");
         ret = ESP_FAIL;
@@ -532,41 +512,23 @@ static esp_err_t handleUriLoadImage(httpd_req_t *req){
 
 cleanup:
     cJSON_Delete(jRoot);
-    free(recvBuf);
+    free(contextBuff);
     return ret;
 }
 
 static esp_err_t handleUriDeleteImage(httpd_req_t *req){
     esp_err_t ret;
-    char responseBuff[128];
-    char *recvBuf;
+    char *contextBuff;
     cJSON *jRoot = NULL;
-    const cJSON *jImgName = NULL;
 
     httpd_resp_set_type(req, "application/json");
 
-    int remaining = req->content_len;   // total bytes expected
-    recvBuf = malloc(req->content_len);
-    int r = httpd_req_recv(req, (char*)recvBuf, remaining);
-    if(r < 0){
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"Error while receiving info\"}");
+    if(getJsonFromReq(req, &contextBuff, &jRoot)){
         ret = ESP_FAIL;
         goto cleanup;
     }
-    jRoot = cJSON_Parse(recvBuf);
 
-    if(jRoot == NULL){
-        const char *error_ptr = cJSON_GetErrorPtr();
-        if(error_ptr != NULL){
-            snprintf(responseBuff, 128, "{\"stat\": \"JSON invalid: %s\"}", error_ptr);
-        } else {
-            snprintf(responseBuff, 128, "{\"stat\": \"JSON invalid: unknown\"}");
-        }
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, responseBuff);
-        ret = ESP_FAIL;
-        goto cleanup;
-    }
-    jImgName = cJSON_GetObjectItem(jRoot, "name");
+    const cJSON *jImgName = cJSON_GetObjectItem(jRoot, "name");
     if (!cJSON_IsString(jImgName)){
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"JSON invalid: imgName not a string\"}");
         ret = ESP_FAIL;
@@ -593,7 +555,99 @@ static esp_err_t handleUriDeleteImage(httpd_req_t *req){
 
 cleanup:
     cJSON_Delete(jRoot);
-    free(recvBuf);
+    free(contextBuff);
+    return ret;
+
+}
+
+static esp_err_t handleUriGetMode(httpd_req_t *req){
+    esp_err_t ret;
+    cJSON *jRoot;
+    char *jsonPrint;
+    const char *strToFill;
+
+    httpd_resp_set_type(req, "application/json");
+    jRoot = cJSON_CreateObject();
+
+    cJSON_AddStringToObject(jRoot, "stat", "ok");
+    switch(getMode()){
+        case MODE_STANDBY:
+            strToFill = "standby";
+            break;
+        case MODE_IMAGE_CYCLE:
+            strToFill = "cycle";
+            break;
+        default:
+            strToFill = "Error";
+            break;
+    }
+    cJSON_AddStringToObject(jRoot, "mode", strToFill);
+
+    jsonPrint = cJSON_PrintUnformatted(jRoot);
+    if(jsonPrint == NULL){
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"CJSON Fail\"}");
+        ret = ESP_FAIL;
+    } else {
+        httpd_resp_sendstr(req, jsonPrint);
+        ret = ESP_OK;
+    }
+
+    cJSON_Delete(jRoot);
+    return ret;
+}
+
+static esp_err_t handleUriSetOperationMode(httpd_req_t *req){
+    esp_err_t ret;
+    char *contextBuff;
+    cJSON *jRoot = NULL;
+
+    httpd_resp_set_type(req, "application/json");
+
+    if(getJsonFromReq(req, &contextBuff, &jRoot)){
+        ret = ESP_FAIL;
+        goto cleanup;
+    }
+
+    const cJSON *jMode = cJSON_GetObjectItem(jRoot, "mode");
+    if (!cJSON_IsString(jMode)){
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"JSON invalid: mode not a string\"}");
+        ret = ESP_FAIL;
+        goto cleanup;
+    }
+
+    if(strcmp(jMode->valuestring, "standby") == 0){
+        setModeRet_e stat = setMode(MODE_STANDBY);
+        if(stat){
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"internal error\"}");
+            ret = ESP_FAIL;
+            goto cleanup;
+        }
+    }
+    else if(strcmp(jMode->valuestring, "cycle") == 0){
+        setModeRet_e stat = setMode(MODE_IMAGE_CYCLE);
+        if(stat){
+            if(stat == RET_SET_MODE_IMG_CYCLE_NONE_SET){
+                httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"no images selected for cycle mode\"}");
+            }
+            else{
+                httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"internal error\"}");
+            }
+            ret = ESP_FAIL;
+            goto cleanup;
+        }
+    }
+    else{
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"invalid mode\"}");
+        ret = ESP_FAIL;
+        goto cleanup;
+    }
+
+    httpd_resp_sendstr(req, "{\"stat\": \"ok\"}");
+    ret = ESP_OK;
+
+cleanup:
+    cJSON_Delete(jRoot);
+    free(contextBuff);
     return ret;
 
 }
@@ -813,6 +867,10 @@ void startHttpServer(void){
     uriMatch.uri = "/api/v1/img/available";
     httpd_register_uri_handler(server, &uriMatch);
 
+    uriMatch.handler = handleUriGetMode;
+    uriMatch.uri = "/api/v1/mode";
+    httpd_register_uri_handler(server, &uriMatch);
+
     /**** POST commands */
     uriMatch.method = HTTP_POST;
     uriMatch.handler = handleUriPostSetDisplayFb;
@@ -851,6 +909,7 @@ void startHttpServer(void){
     uriMatch.uri = "/api/v1/img/delete";
     httpd_register_uri_handler(server, &uriMatch);
 
-
-    // todo: delete image
+    uriMatch.handler = handleUriSetOperationMode;
+    uriMatch.uri = "/api/v1/mode";
+    httpd_register_uri_handler(server, &uriMatch);
 }

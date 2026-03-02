@@ -12,6 +12,8 @@ Right now only one folder shall exist in the SD card named `img`, where all "ima
 # Image/Frame Buffer Format
 An image frame buffer is a 192000 byte data block, each nibble (4-bits) describes one pixel color. Each nibble can be 0 to 3, 5, or 6.
 
+Due to how the display and the photo-frame is oriented, the image sent down must be flipped by 180 degrees. I did think about flipping it in firmware, but because it's nibble based, and I am just sending down the framebuffer directly, and as the host sending the buffer needs to process stuff anyways, the flipped is delegated to it.
+
 The image file stored on the SDCard shall be the same format as the frame buffer with the `.raw` extension.
 
 Yes we could bit-pack a bit more (no pun intended) and reduce the file size to 144000 bytes, but because the display itself expects a nibble per pixel, the format shall stay. Plus 192kB isn't _that_ much in the context of SD cards, This also allows easy loading of a buffer unto the display without any extra data mangling.

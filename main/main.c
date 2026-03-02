@@ -38,11 +38,14 @@
 struct{
     TickType_t period_ticks;      // the duration of the cycle in ticks. Must NOT be less than 12-15 seconds due to display refresh rate
     char imgCycleSel[MAX_IMAGE_CYCLE_N][MAX_IMAGE_NAME_LEN];
+    u32 imgCycleSelTotal;       // number of images to cycle through
     imgCycleMode_e mode;
     // internal variables
-    u32 sdCardImageN;       // if in "ALL" mode, this is the current index of the image read
+    u32 cycleAllImgN;       // the current image index
     TimerHandle_t handler;
 }imgCycleSettings;
+
+mode_e runMode;
 
 spi_device_handle_t dispSpi;        // global spi device
 i2c_master_bus_handle_t i2cHandle;
@@ -177,6 +180,12 @@ void app_main(void){
     memset(&pmicTelem, 0, sizeof(pmicTelem));
     pmicTelemetryMutex = xSemaphoreCreateMutex();
 
+    // todo debug values. Have them default to something and load them from nvm
+    imgCycleSettings.period_ticks = pdTICKS_TO_MS(1000 * DEFAULT_SCAN_IMAGE_DUR_SEC);
+    imgCycleSettings.mode = IMAGE_CYCLE_MODE_ALL;
+    imgCycleSettings.handler = xTimerCreate("imgCycle", imgCycleSettings.period_ticks, pdTRUE, ( void * )0, taskTimerImageCycler);
+    runMode = MODE_STANDBY;
+
     wifiInit();
     startHttpServer();
 
@@ -187,14 +196,26 @@ void app_main(void){
 
     xTaskCreatePinnedToCore(taskPmicTelemetry, "pmicTelem", 4096, NULL, 4,
                             &pmicTelemTask_h, 0);
-    
-    // todo debug values. Have them default to something and load them from nvm
-    imgCycleSettings.period_ticks = pdTICKS_TO_MS(1000 * 60);
-    imgCycleSettings.mode = IMAGE_CYCLE_MODE_ALL;
-    imgCycleSettings.handler = xTimerCreate("imgCycle", imgCycleSettings.period_ticks, pdTRUE, ( void * )0, taskTimerImageCycler);
+}
 
-    // debug: enable the image cycle timer, for later have a `setMode` function
-    xTimerStart(imgCycleSettings.handler, 0);
+mode_e getMode(void){
+    return runMode;
+}
+
+setModeRet_e setMode(mode_e newMode){
+    if(newMode == MODE_IMAGE_CYCLE){
+        if(imgCycleSettings.mode == IMAGE_CYCLE_MODE_SELECTED){
+            if(imgCycleSettings.imgCycleSelTotal == 0){
+                return RET_SET_MODE_IMG_CYCLE_NONE_SET;
+            }
+        }
+        imgCycleSettings.cycleAllImgN = 0;
+        xTimerStart(imgCycleSettings.handler, 0);
+    } else {
+        xTimerStop(imgCycleSettings.handler, 0);
+    }
+    runMode = newMode;
+    return RET_SET_MODE_OK;
 }
 
 u32 dispTrigUpdate(void){
@@ -206,24 +227,33 @@ u32 dispTrigUpdate(void){
     return 0;
 }
 
+#define s imgCycleSettings
 void taskTimerImageCycler(TimerHandle_t xTimer){
-    static u32 lastIdx = 0;
-    // if in all mode, cycle through all images on the SD card
-    if(imgCycleSettings.mode == IMAGE_CYCLE_MODE_ALL){
-        imgCycleSettings.sdCardImageN++;
-    }
+    fSysRet stat;
 
     u8 *destBuff = takeDispFb(pdTICKS_TO_MS(100));
     if(destBuff == NULL){
         ESP_LOGE(TAG, "Unable to take ownership of frame buffer");
         return;
     }
-    fSysRet stat = fileSysLoadNextImageFromIdx(&lastIdx, destBuff);
+
+    // if in all mode, cycle through all images on the SD card
+    if(s.mode == IMAGE_CYCLE_MODE_ALL){
+        stat = fileSysLoadNextImageFromIdx(&s.cycleAllImgN, destBuff);
+    }
+    else if(s.mode == IMAGE_CYCLE_MODE_SELECTED){
+        stat = fileSysLoadImage(s.imgCycleSel[s.cycleAllImgN], destBuff, false);
+    }else{
+        abort();
+    }
+    s.cycleAllImgN++;
+    
     releaseDispFb();
     if(stat == FILE_SYS_RET_OK){
         dispTrigUpdate();
     }
 }
+#undef s
 
 /**
  * A task that reads telemetry from the power IC

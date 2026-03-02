@@ -1,3 +1,4 @@
+#!/bin/python
 import pytest
 import requests
 import json
@@ -14,6 +15,7 @@ def commonApiRequest(url, method, payload = None):
     print(url)
     if type(payload) is dict:
         payload = json.dumps(payload, separators=(",", ":")).encode()
+        print(payload)
     resp = requests.request(method=method, url=url, data=payload)
     print(f"Return code: {resp.status_code}")
     print(f"Content: {json.dumps(resp.json(), indent=2, sort_keys=False)}")
@@ -21,10 +23,10 @@ def commonApiRequest(url, method, payload = None):
 
 ########## TOP LEVEL GROUP ##########
 @click.group
-@click.option('--base-url', default='192.168.4.1', show_default=True, help='The hostname of the esp32')
+@click.option('-u', '--url', type=str, default='192.168.4.1', show_default=True, help='The hostname of the esp32')
 @click.pass_context
-def cli(ctx: click.Context, base_url: str):
-    ctx.obj['url'] = 'http://' + base_url
+def cli(ctx: click.Context, url: str):
+    ctx.obj['url'] = 'http://' + url
 
 
 @cli.command()
@@ -32,6 +34,17 @@ def cli(ctx: click.Context, base_url: str):
 def version(ctx: click.Context) -> None:
     url = createUrl(ctx.obj['url'], 'version')
     commonApiRequest(url, 'GET')
+
+@cli.command()
+@click.option('-m', '--mode', type=str, default=None, help='The mode to set to if SET')
+@click.pass_context
+def mode(ctx: click.Context, mode: str) -> None:
+    if mode is None:
+        url = createUrl(ctx.obj['url'], 'mode')
+        commonApiRequest(url, 'GET')
+    else:
+        url = createUrl(ctx.obj['url'], 'mode')
+        commonApiRequest(url, 'POST', {'mode': mode})
 
 @cli.command()
 @click.pass_context

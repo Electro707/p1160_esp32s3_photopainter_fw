@@ -38,6 +38,8 @@
 
 #define MAX_IMAGE_CYCLE_N       10      // up to how many images can be added to a defined cycle
 
+#define DEFAULT_SCAN_IMAGE_DUR_SEC      60*5      // sec, the default duration for the image scan mode
+
 ////////// Other defines
 #define EVER    ;;
 

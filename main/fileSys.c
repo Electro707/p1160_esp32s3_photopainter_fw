@@ -203,6 +203,7 @@ fSysRet fileSysLoadNextImageFromIdx(u32 *lastIdx, u8 *datOut){
     if(fileCnt < *lastIdx){
         return FILE_SYS_NO_FILE_FOUND;
     }
+    (*lastIdx)++;
         
     ret = fileSysLoadImage((const char *)fno.fname, datOut, true);
     return ret;

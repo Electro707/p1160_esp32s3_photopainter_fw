@@ -33,10 +33,22 @@ A decent amount of this firmware comes from Waveshare's own example, especially 
 
 The previous implementation of the pmic stuff was by the [XPowerLibs](https://github.com/lewisxhe/XPowersLib) library. I have since did it myself in C.
 
+# Revision History
+- Rev 0.1 (WIP)
+    - Initial Release
+    - Functionality includes:
+        - Basic Functionality (the display)
+        - SD Card image loading/storing
+        - Image cycle mode
+        - HTTP API
+        - PMIC reading
+- Rev 0.2 (PLANNED)
+    - Allow to image cycle through folders (PLANNED)
+- Rev X.X (PLANNED)
+    - 
+
 # Future Todo
 
-- Add SD card storage and automatic image cycling
-- Low power
 - Moving eink.c into it's own component
     - Might have to make another component for the sane defines, such as u8
 - Low-Level driving of SPI

@@ -20,6 +20,11 @@ typedef enum{
     IMAGE_CYCLE_MODE_ALL,           // cycle through all images on the SD card
 }imgCycleMode_e;
 
+typedef enum{
+    RET_SET_MODE_OK = 0,
+    RET_SET_MODE_IMG_CYCLE_NONE_SET
+}setModeRet_e;
+
 extern spi_device_handle_t dispSpi;             // global spi device
 extern i2c_master_bus_handle_t i2cHandle;       // global i2c handler
 extern sdmmc_card_t sdCard;                     // global sdcard handler
@@ -28,6 +33,8 @@ extern pmicTelemetry pmicTelem;                        // global pmic telemetry 
                                                 // todo: move it so a dedicated function returns a pointer to it or None if busy
 extern SemaphoreHandle_t pmicTelemetryMutex;           // mutex for pmic telemetry
 
+mode_e getMode(void);
+setModeRet_e setMode(mode_e newMode);
 u32 dispTrigUpdate(void);
 
 #endif
