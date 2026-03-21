@@ -8,7 +8,7 @@
 #define FW_REV      "0.1.0-dev"
 
 ////////// debug options
-#define DEBUG_DISABLE_DISPLAY_UPDATE            // use this to not actually update the display
+// #define DEBUG_DISABLE_DISPLAY_UPDATE            // use this to not actually update the display
                                                 // used for example to test the image playlist functionality without waiting for display refreshes
 
 ////////// Pin definition
