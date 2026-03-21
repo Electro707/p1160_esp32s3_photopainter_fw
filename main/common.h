@@ -40,7 +40,7 @@
 
 #define MAX_IMAGE_NAME_LEN      32
 
-#define MAX_IMAGE_CYCLE_N       10                  // up to how many images can be added to a defined cycle
+#define MAX_PLAYLIST_IMG       10                  // up to how many images can be added to a playlist
 
 #define MIN_PLAYLIST_DUR        0.5                 // min, minimum duration for playlist
 

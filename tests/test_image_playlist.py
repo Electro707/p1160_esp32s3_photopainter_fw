@@ -21,20 +21,20 @@ def commonApiRequest(url, method, payload = None):
 def test_gen1():
     commonApiRequest(createUrl('mode'), 'POST', {'mode': 'standby'})
 
-    commonApiRequest(createUrl('img/cycle/add'), 'POST', {'name': 'DSC9060'})
-    commonApiRequest(createUrl('img/cycle/add'), 'POST', {'name': 'DSC2765'})
-    commonApiRequest(createUrl('img/cycle/add'), 'POST', {'name': 'DSC3330'})
+    commonApiRequest(createUrl('img/playlist/add'), 'POST', {'name': 'DSC9060'})
+    commonApiRequest(createUrl('img/playlist/add'), 'POST', {'name': 'DSC2765'})
+    commonApiRequest(createUrl('img/playlist/add'), 'POST', {'name': 'DSC3330'})
 
-    commonApiRequest(createUrl('img/cycle/del'), 'POST', {'name': 'DSC9060'})
+    commonApiRequest(createUrl('img/playlist/del'), 'POST', {'name': 'DSC9060'})
 
-    commonApiRequest(createUrl('img/cycle/get'), 'GET')
+    commonApiRequest(createUrl('img/playlist/get'), 'GET')
 
-    commonApiRequest(createUrl('mode'), 'POST', {'mode': 'cycle', 'cycle': {'mode': 'cycle', 'duration': 30/60}})
+    commonApiRequest(createUrl('mode'), 'POST', {'mode': 'playlist', 'playlist': {'mode': 'select', 'duration': 30/60}})
 
 
 def test_duplicate():
-    commonApiRequest(createUrl('img/cycle/add'), 'POST', {'name': 'DSC9060'})
-    commonApiRequest(createUrl('img/cycle/add'), 'POST', {'name': 'DSC9060'})
+    commonApiRequest(createUrl('img/playlist/add'), 'POST', {'name': 'DSC9060'})
+    commonApiRequest(createUrl('img/playlist/add'), 'POST', {'name': 'DSC9060'})
 
 
 test_gen1()

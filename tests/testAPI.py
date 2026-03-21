@@ -152,39 +152,39 @@ def delImage(ctx: click.Context, name: str) -> None:
     url = createUrl(ctx.obj['url'], 'img/delete')
     commonApiRequest(url, 'POST', {'name': name})
 
-########## Image Cycle Selection Sub-Group ##########
-@display.group('imgCycle')
+########## Image Playlist Selection Sub-Group ##########
+@display.group('playlist')
 @click.pass_context
-def imgCycle(ctx: click.Context):
+def playlist(ctx: click.Context):
     pass
 
-@imgCycle.command('list')
+@playlist.command('list')
 @click.pass_context
-def imgCycleList(ctx: click.Context) -> None:
+def playlistList(ctx: click.Context) -> None:
     """
     Lists the images available for cycling
     """
-    url = createUrl(ctx.obj['url'], 'img/cycle/get')
+    url = createUrl(ctx.obj['url'], 'img/playlist/get')
     commonApiRequest(url, 'GET')
 
-@imgCycle.command('add')
+@playlist.command('add')
 @click.argument('name', type=str)
 @click.pass_context
-def imgCycleAdd(ctx: click.Context, name: str) -> None:
+def playlistAdd(ctx: click.Context, name: str) -> None:
     """
     Lists the images available for cycling
     """
-    url = createUrl(ctx.obj['url'], 'img/cycle/add')
+    url = createUrl(ctx.obj['url'], 'img/playlist/add')
     commonApiRequest(url, 'POST', {'name': name})
 
-@imgCycle.command('del')
+@playlist.command('del')
 @click.argument('name', type=str)
 @click.pass_context
-def imgCycleDel(ctx: click.Context, name: str) -> None:
+def playlistDel(ctx: click.Context, name: str) -> None:
     """
     Lists the images available for cycling
     """
-    url = createUrl(ctx.obj['url'], 'img/cycle/del')
+    url = createUrl(ctx.obj['url'], 'img/playlist/del')
     commonApiRequest(url, 'POST', {'name': name})
 
 

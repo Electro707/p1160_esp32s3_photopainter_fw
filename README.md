@@ -39,7 +39,7 @@ The previous implementation of the pmic stuff was by the [XPowerLibs](https://gi
     - Functionality includes:
         - Basic Functionality (the display)
         - SD Card image loading/storing
-        - Image cycle mode
+        - Image ~~cycle~~ playlist mode
         - HTTP API
         - PMIC reading
 - Rev 0.2 (PLANNED)

@@ -100,17 +100,17 @@ paths:
                     const: "ok"
                   mode:
                     type: string
-                    description: "The firmware version"
+                    description: "The device mode"
                     enum:
                       - "standby"
-                      - "cycle"
+                      - "playlist"
                       - "error"
-                  cycle:
+                  playlist:
                     type: object
                     properties:
                       mode:
                         type: string
-                        description: "The firmware version"
+                        description: "The playlist mode"
                         enum:
                           - "select"
                           - "all"
@@ -121,8 +121,8 @@ paths:
                         description: "The slideshow time, in minutes"
                 examples:
                   - stat: "ok"
-                    mode: "cycle"
-                    cycle:
+                    mode: "playlist"
+                    playlist:
                       mode: "random"
                       duration: 4.5
     post:
@@ -139,13 +139,13 @@ paths:
                   description: "The mode to set the photo frame to"
                   enum:
                       - "standby"
-                      - "cycle"
-                cycle:
+                      - "playlist"
+                playlist:
                   type: object
                   properties:
                     mode:
                       type: string
-                      description: "The cycle mode"
+                      description: "The playlist mode"
                       enum:
                         - "select"
                         - "all"
@@ -155,13 +155,13 @@ paths:
                       description: "The slideshow time, in minutes"
               examples:
                 - mode: "standby"
-                - cycle:
+                - playlist:
                     mode: "all"
-                - cycle:
+                - playlist:
                     mode: "random"
                     duration: 1.0
-                - mode: "cycle"
-                  cycle:
+                - mode: "playlist"
+                  playlist:
                     mode: "random"
                     duration: 5.0
       responses:
@@ -472,9 +472,9 @@ paths:
         "500":
           $ref: '#/components/responses/PostErrorResponse'
   
-  /img/cycle/add:
+  /img/playlist/add:
     post:
-      description: "To add an image in the list to be cycled"
+      description: "To add an image to the playlist"
       tags:
         - Image Management
       requestBody:
@@ -488,7 +488,7 @@ paths:
               properties:
                 name:
                   type: string
-                  description: "The image name to add to the cycle"
+                  description: "The image name to add to the playlist"
       responses:
         "200":
           $ref: '#/components/responses/PostOKResponse'
@@ -497,9 +497,9 @@ paths:
         "500":
           $ref: '#/components/responses/PostErrorResponse'
 
-  /img/cycle/del:
+  /img/playlist/del:
     post:
-      description: "To delete an image in the list to be cycled"
+      description: "To delete an image in the playlist"
       tags:
         - Image Management
       requestBody:
@@ -513,7 +513,7 @@ paths:
               properties:
                 name:
                   type: string
-                  description: "The image name to add to the cycle"
+                  description: "The image name to add to the playlist"
       responses:
         "200":
           $ref: '#/components/responses/PostOKResponse'
@@ -522,9 +522,9 @@ paths:
         "500":
           $ref: '#/components/responses/PostErrorResponse'
 
-  /img/cycle/get:
+  /img/playlist/get:
     get:
-      description: "To get all images in the list to be cycled"
+      description: "To get all images in the playlist"
       tags:
         - Image Management
       responses:

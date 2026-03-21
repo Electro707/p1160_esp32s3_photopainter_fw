@@ -212,7 +212,7 @@ static esp_err_t handleUriGetImgAvailable(httpd_req_t *req){
     return ret;
 }
 
-static esp_err_t handleUriGetCycleImages(httpd_req_t *req){
+static esp_err_t handleUriGetPlaylistImages(httpd_req_t *req){
     esp_err_t ret;
     cJSON *jRoot;
     char *jsonPrint;
@@ -222,9 +222,9 @@ static esp_err_t handleUriGetCycleImages(httpd_req_t *req){
     jRoot = cJSON_CreateObject();
     cJSON_AddStringToObject(jRoot, "stat", "ok");
     cJSON * jArr = cJSON_AddArrayToObject(jRoot, "img");
-    for(int i=0;i<MAX_IMAGE_CYCLE_N;i++){
-        if(imgCycleSettings.imgCycleSelAvail[i]){
-            string_item = cJSON_CreateString(imgCycleSettings.imgCycleSel[i]);
+    for(int i=0;i<MAX_PLAYLIST_IMG;i++){
+        if(imgPlaylist.imgSelectEn[i]){
+            string_item = cJSON_CreateString(imgPlaylist.imgSelect[i]);
             cJSON_AddItemToArray(jArr, string_item);
         }
     }
@@ -590,7 +590,7 @@ cleanup:
 
 }
 
-static esp_err_t handleUriImgCycleAdd(httpd_req_t *req){
+static esp_err_t handleUriPlaylistAdd(httpd_req_t *req){
     esp_err_t ret;
     char *contextBuff;
     cJSON *jRoot = NULL;
@@ -616,10 +616,10 @@ static esp_err_t handleUriImgCycleAdd(httpd_req_t *req){
 
     // first, check if it exists, then if not actually add
     int freeSpot = -1;    // as we are already going through the list anyways, if an empty spot is added record it
-    for(int i=0;i<MAX_IMAGE_CYCLE_N;i++){
-        if(imgCycleSettings.imgCycleSelAvail[i]){
+    for(int i=0;i<MAX_PLAYLIST_IMG;i++){
+        if(imgPlaylist.imgSelectEn[i]){
             // if we find the same image, we already added it. Don't add it again
-            if(strcmp(imgCycleSettings.imgCycleSel[i], jImgName->valuestring) == 0){
+            if(strcmp(imgPlaylist.imgSelect[i], jImgName->valuestring) == 0){
                 httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"image already exists in playlist\"}");
                 ret = ESP_FAIL;
                 goto cleanup;
@@ -635,8 +635,8 @@ static esp_err_t handleUriImgCycleAdd(httpd_req_t *req){
         goto cleanup;
     }
     // then add it
-    strcpy(imgCycleSettings.imgCycleSel[freeSpot], jImgName->valuestring);
-    imgCycleSettings.imgCycleSelAvail[freeSpot] = 1;
+    strcpy(imgPlaylist.imgSelect[freeSpot], jImgName->valuestring);
+    imgPlaylist.imgSelectEn[freeSpot] = 1;
 
     httpd_resp_sendstr(req, "{\"stat\": \"ok\"}");
     ret = ESP_OK;
@@ -649,7 +649,7 @@ cleanup:
 }
 
 
-static esp_err_t handleUriImgCycleDel(httpd_req_t *req){
+static esp_err_t handleUriPlaylistDel(httpd_req_t *req){
     esp_err_t ret;
     char *contextBuff;
     cJSON *jRoot = NULL;
@@ -668,24 +668,24 @@ static esp_err_t handleUriImgCycleDel(httpd_req_t *req){
         goto cleanup;
     }
 
-    // add check if we are currently in the cycle selected mode, don't allow deletion as it remove the last
+    // add check if we are currently in the playlist selected mode, don't allow deletion as it remove the last
     //  available image, causing cascading of issues
-    if(runMode == MODE_IMAGE_CYCLE && imgCycleSettings.mode == IMAGE_CYCLE_MODE_SELECTED){
+    if(runMode == MODE_IMAGE_PLAYLIST && imgPlaylist.mode == PLAYLIST_MODE_SELECT){
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"current running in mode, stop image cycling to remove\"}");
         ret = ESP_FAIL;
         goto cleanup;
     }
 
     int i;
-    for(i=0;i<MAX_IMAGE_CYCLE_N;i++){
-        if(imgCycleSettings.imgCycleSelAvail[i]){
-            if(strcmp(imgCycleSettings.imgCycleSel[i], jImgName->valuestring) == 0){
-                imgCycleSettings.imgCycleSelAvail[i] = 0;
+    for(i=0;i<MAX_PLAYLIST_IMG;i++){
+        if(imgPlaylist.imgSelectEn[i]){
+            if(strcmp(imgPlaylist.imgSelect[i], jImgName->valuestring) == 0){
+                imgPlaylist.imgSelectEn[i] = 0;
                 break;
             }
         }
     }
-    if(i == MAX_IMAGE_CYCLE_N){
+    if(i == MAX_PLAYLIST_IMG){
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"Image not found to delete\"}");
         ret = ESP_FAIL;
         goto cleanup;
@@ -716,8 +716,8 @@ static esp_err_t handleUriGetMode(httpd_req_t *req){
         case MODE_STANDBY:
             strToFill = "standby";
             break;
-        case MODE_IMAGE_CYCLE:
-            strToFill = "cycle";
+        case MODE_IMAGE_PLAYLIST:
+            strToFill = "playlist";
             break;
         default:
             strToFill = "error";
@@ -725,24 +725,24 @@ static esp_err_t handleUriGetMode(httpd_req_t *req){
     }
     cJSON_AddStringToObject(jRoot, "mode", strToFill);
 
-    const cJSON *jCycle = cJSON_AddObjectToObject(jRoot, "cycle");
+    const cJSON *jPlaylist = cJSON_AddObjectToObject(jRoot, "playlist");
     cJSON_AddStringToObject(jRoot, "stat", "ok");
-    switch(imgCycleSettings.mode){
-        case IMAGE_CYCLE_MODE_SELECTED:
+    switch(imgPlaylist.mode){
+        case PLAYLIST_MODE_SELECT:
             strToFill = "select";
             break;
-        case IMAGE_CYCLE_MODE_ALL:
+        case PLAYLIST_MODE_ALL:
             strToFill = "all";
             break;
-        case IMAGE_CYCLE_MODE_RANDOM:
+        case PLAYLIST_MODE_RANDOM:
             strToFill = "random";
             break;
         default:
             strToFill = "Error";
             break;
     }
-    cJSON_AddStringToObject(jCycle, "mode", strToFill);
-    cJSON_AddNumberToObject(jCycle, "duration", (((float)imgCycleSettings.period_ticks) / ((float)configTICK_RATE_HZ) / 60.0));
+    cJSON_AddStringToObject(jPlaylist, "mode", strToFill);
+    cJSON_AddNumberToObject(jPlaylist, "duration", (((float)imgPlaylist.period_ticks) / ((float)configTICK_RATE_HZ) / 60.0));
 
     
     jsonPrint = cJSON_PrintUnformatted(jRoot);
@@ -773,19 +773,19 @@ static esp_err_t handleUriSetOperationMode(httpd_req_t *req){
     }
 
     // handle if the playlist config are to be changed
-    jObj = cJSON_GetObjectItem(jRoot, "cycle");
+    jObj = cJSON_GetObjectItem(jRoot, "playlist");
     if (cJSON_IsObject(jObj)){
-        const cJSON *jCycle;
-        jCycle = cJSON_GetObjectItem(jObj, "mode");
-        if (cJSON_IsString(jCycle)){
-            if(strcmp(jCycle->valuestring, "select") == 0){
-                imgCycleSettings.mode = IMAGE_CYCLE_MODE_SELECTED;
+        const cJSON *jPlaylist;
+        jPlaylist = cJSON_GetObjectItem(jObj, "mode");
+        if (cJSON_IsString(jPlaylist)){
+            if(strcmp(jPlaylist->valuestring, "select") == 0){
+                imgPlaylist.mode = PLAYLIST_MODE_SELECT;
             }
-            else if(strcmp(jCycle->valuestring, "all") == 0){
-                imgCycleSettings.mode = IMAGE_CYCLE_MODE_ALL;
+            else if(strcmp(jPlaylist->valuestring, "all") == 0){
+                imgPlaylist.mode = PLAYLIST_MODE_ALL;
             }
-            else if(strcmp(jCycle->valuestring, "random") == 0){
-                imgCycleSettings.mode = IMAGE_CYCLE_MODE_RANDOM;
+            else if(strcmp(jPlaylist->valuestring, "random") == 0){
+                imgPlaylist.mode = PLAYLIST_MODE_RANDOM;
             }
             else{
                 httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"invalid playlist mode\"}");
@@ -794,9 +794,9 @@ static esp_err_t handleUriSetOperationMode(httpd_req_t *req){
             }
         }
 
-        jCycle = cJSON_GetObjectItem(jObj, "duration");
-        if (cJSON_IsNumber(jCycle)){
-            double timeSet = jCycle->valuedouble;
+        jPlaylist = cJSON_GetObjectItem(jObj, "duration");
+        if (cJSON_IsNumber(jPlaylist)){
+            double timeSet = jPlaylist->valuedouble;
             if(timeSet < MIN_PLAYLIST_DUR){
                 httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"playlist duration less than minimum of 30 sec\"}");
                 ret = ESP_FAIL;
@@ -804,7 +804,7 @@ static esp_err_t handleUriSetOperationMode(httpd_req_t *req){
             }
             timeSet *= 60;      // to seconds from minutes
             timeSet *= configTICK_RATE_HZ;      // to the tick rate
-            imgCycleSettings.period_ticks = (TickType_t)timeSet;
+            imgPlaylist.period_ticks = (TickType_t)timeSet;
         }
     }
 
@@ -820,11 +820,11 @@ static esp_err_t handleUriSetOperationMode(httpd_req_t *req){
                 goto cleanup;
             }
         }
-        else if(strcmp(jObj->valuestring, "cycle") == 0){
-            setModeRet_e stat = setMode(MODE_IMAGE_CYCLE);
+        else if(strcmp(jObj->valuestring, "playlist") == 0){
+            setModeRet_e stat = setMode(MODE_IMAGE_PLAYLIST);
             if(stat){
-                if(stat == RET_SET_MODE_IMG_CYCLE_NONE_SET){
-                    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"no images selected for cycle mode\"}");
+                if(stat == RET_SET_MODE_IMG_PL_NONE_SET){
+                    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"no images selected for playlist mode\"}");
                 }
                 else{
                     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"internal error\"}");
@@ -1070,8 +1070,8 @@ void startHttpServer(void){
     uriMatch.uri = "/api/v1/mode";
     httpd_register_uri_handler(server, &uriMatch);
 
-    uriMatch.handler = handleUriGetCycleImages;
-    uriMatch.uri = "/api/v1/img/cycle/get";
+    uriMatch.handler = handleUriGetPlaylistImages;
+    uriMatch.uri = "/api/v1/img/playlist/get";
     httpd_register_uri_handler(server, &uriMatch);
 
     /**** POST commands */
@@ -1112,12 +1112,12 @@ void startHttpServer(void){
     uriMatch.uri = "/api/v1/img/delete";
     httpd_register_uri_handler(server, &uriMatch);
 
-    uriMatch.handler = handleUriImgCycleAdd;
-    uriMatch.uri = "/api/v1/img/cycle/add";
+    uriMatch.handler = handleUriPlaylistAdd;
+    uriMatch.uri = "/api/v1/img/playlist/add";
     httpd_register_uri_handler(server, &uriMatch);
 
-    uriMatch.handler = handleUriImgCycleDel;
-    uriMatch.uri = "/api/v1/img/cycle/del";
+    uriMatch.handler = handleUriPlaylistDel;
+    uriMatch.uri = "/api/v1/img/playlist/del";
     httpd_register_uri_handler(server, &uriMatch);
 
     uriMatch.handler = handleUriSetOperationMode;

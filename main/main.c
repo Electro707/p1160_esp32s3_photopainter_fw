@@ -36,7 +36,7 @@
 #include "network.h"
 #include "fileSys.h"
 
-imgCycleSettings_t imgCycleSettings = { 0 };
+imgPlaylist_t imgPlaylist = { 0 };
 mode_e runMode;
 
 spi_device_handle_t dispSpi;        // global spi device
@@ -51,7 +51,7 @@ TaskHandle_t dispTask_h;
 TaskHandle_t pmicTelemTask_h;
 SemaphoreHandle_t pmicTelemetryMutex;
 
-void taskTimerImageCycler(TimerHandle_t xTimer);
+void taskTimerImagePlaylist(TimerHandle_t xTimer);
 void taskPmicTelemetry(void *args);
 void taskDispUpdate(void *args);
 
@@ -173,12 +173,12 @@ void app_main(void){
     pmicTelemetryMutex = xSemaphoreCreateMutex();
 
     // todo debug values. Have them default to something and load them from nvm
-    imgCycleSettings.period_ticks = configTICK_RATE_HZ * 60 * DEFAULT_SCAN_IMAGE_DUR_MIN;
-    imgCycleSettings.mode = IMAGE_CYCLE_MODE_RANDOM;
+    imgPlaylist.period_ticks = configTICK_RATE_HZ * 60 * DEFAULT_SCAN_IMAGE_DUR_MIN;
+    imgPlaylist.mode = PLAYLIST_MODE_RANDOM;
     runMode = MODE_STANDBY;
 
     // create the image playlist timer
-    imgCycleSettings.handler = xTimerCreate("imgCycle", imgCycleSettings.period_ticks, pdTRUE, ( void * )0, taskTimerImageCycler);
+    imgPlaylist.timerHandler = xTimerCreate("playlist", imgPlaylist.period_ticks, pdTRUE, ( void * )0, taskTimerImagePlaylist);
 
     wifiInit();
     startHttpServer();
@@ -193,32 +193,32 @@ void app_main(void){
 }
 
 setModeRet_e setMode(mode_e newMode){  
-    if(newMode == MODE_IMAGE_CYCLE){
-        // set imgCycleTotalImg before going into the mode
-        if(fileSysGetAvailableImages(NULL, &imgCycleSettings.imgCycleTotalImg)){
+    if(newMode == MODE_IMAGE_PLAYLIST){
+        // set totalImg before going into the mode
+        if(fileSysGetAvailableImages(NULL, &imgPlaylist.totalImg)){
             return RET_SET_MODE_ERR;
         }
         // check we have images available. Should be at least 2 for an image playlist to work as a playlist
-        if(imgCycleSettings.imgCycleTotalImg < 2){
+        if(imgPlaylist.totalImg < 2){
             return RET_SET_MODE_IMG_NO_IMG;
         }
         // check we have images selected if in selection mode
-        if(imgCycleSettings.mode == IMAGE_CYCLE_MODE_SELECTED){
+        if(imgPlaylist.mode == PLAYLIST_MODE_SELECT){
             u32 sum = 0;    // really cheeky way to see if we have any image available. because the available variable
                             // will just be 1 or 0, we can just sum the array and check if the sum is 0, meaning no image
                             // is present
-            for(int i=0;i<MAX_IMAGE_CYCLE_N;i++){
-                sum += imgCycleSettings.imgCycleSelAvail[i];
+            for(int i=0;i<MAX_PLAYLIST_IMG;i++){
+                sum += imgPlaylist.imgSelectEn[i];
             }
             if(sum == 0){
-                return RET_SET_MODE_IMG_CYCLE_NONE_SET;
+                return RET_SET_MODE_IMG_PL_NONE_SET;
             }
         }
-        imgCycleSettings.cycleCurrIdx = 0;
-        xTimerChangePeriod(imgCycleSettings.handler, imgCycleSettings.period_ticks, pdTICKS_TO_MS(100));
-        // xTimerStart(imgCycleSettings.handler, 0);        // above change period causes it to start
+        imgPlaylist.currIdx = 0;
+        xTimerChangePeriod(imgPlaylist.timerHandler, imgPlaylist.period_ticks, pdTICKS_TO_MS(100));
+        // xTimerStart(imgPlaylist.timerHandler, 0);        // above change period causes it to start
     } else {
-        xTimerStop(imgCycleSettings.handler, 0);
+        xTimerStop(imgPlaylist.timerHandler, 0);
     }
     runMode = newMode;
     return RET_SET_MODE_OK;
@@ -233,8 +233,8 @@ u32 dispTrigUpdate(void){
     return 0;
 }
 
-#define s imgCycleSettings      // nice macro as I don't feel like calling the long struct name for the function below
-void taskTimerImageCycler(TimerHandle_t xTimer){
+#define s imgPlaylist      // nice macro as I don't feel like calling the long struct name for the function below
+void taskTimerImagePlaylist(TimerHandle_t xTimer){
     fSysRet stat;
     u32 n;
 
@@ -249,38 +249,38 @@ void taskTimerImageCycler(TimerHandle_t xTimer){
 
     // if in all mode, cycle through all images on the SD card
     switch(s.mode){
-        case IMAGE_CYCLE_MODE_ALL:
-            stat = fileSysLoadNextImageFromIdx(s.cycleCurrIdx, destBuff);
-            s.cycleCurrIdx++;
-            s.cycleCurrIdx %= s.imgCycleTotalImg;
+        case PLAYLIST_MODE_ALL:
+            stat = fileSysLoadNextImageFromIdx(s.currIdx, destBuff);
+            s.currIdx++;
+            s.currIdx %= s.totalImg;
             break;
-        case IMAGE_CYCLE_MODE_RANDOM:
+        case PLAYLIST_MODE_RANDOM:
             u32 newIdx;
             n = 20;        // just some upper limiter rather than while(1)
             // ensure the next random image is different from the current one
             while(n--){
-                newIdx = esp_random() % s.imgCycleTotalImg;
-                if(newIdx != s.cycleCurrIdx) break;
+                newIdx = esp_random() % s.totalImg;
+                if(newIdx != s.currIdx) break;
             }
-            s.cycleCurrIdx = newIdx;
-            stat = fileSysLoadNextImageFromIdx(s.cycleCurrIdx, destBuff);
+            s.currIdx = newIdx;
+            stat = fileSysLoadNextImageFromIdx(s.currIdx, destBuff);
             break;
-        case IMAGE_CYCLE_MODE_SELECTED:
-            n = MAX_IMAGE_CYCLE_N;
+        case PLAYLIST_MODE_SELECT:
+            n = MAX_PLAYLIST_IMG;
             while(n--){
-                if(s.imgCycleSelAvail[s.cycleCurrIdx]){
+                if(s.imgSelectEn[s.currIdx]){
                     break;
                 }
-                s.cycleCurrIdx++;
-                s.cycleCurrIdx %= MAX_IMAGE_CYCLE_N;
+                s.currIdx++;
+                s.currIdx %= MAX_PLAYLIST_IMG;
             }
             if(n == 0){
                 // this should never occur, there always should be the next image to load if wrapping around the entire list
                 abort();
             }
-            stat = fileSysLoadImage(s.imgCycleSel[s.cycleCurrIdx], destBuff, false);
-            s.cycleCurrIdx++;
-            s.cycleCurrIdx %= MAX_IMAGE_CYCLE_N;
+            stat = fileSysLoadImage(s.imgSelect[s.currIdx], destBuff, false);
+            s.currIdx++;
+            s.currIdx %= MAX_PLAYLIST_IMG;
             break;
         default:
             abort();
