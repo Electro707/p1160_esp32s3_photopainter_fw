@@ -7,6 +7,10 @@
 #define FW_NAME     "ESP32S3 PhotoPainter Open Firmware"
 #define FW_REV      "0.1.0-dev"
 
+////////// debug options
+#define DEBUG_DISABLE_DISPLAY_UPDATE            // use this to not actually update the display
+                                                // used for example to test the image playlist functionality without waiting for display refreshes
+
 ////////// Pin definition
 
 #define IO_DISP_DC      8
@@ -36,9 +40,11 @@
 
 #define MAX_IMAGE_NAME_LEN      32
 
-#define MAX_IMAGE_CYCLE_N       10      // up to how many images can be added to a defined cycle
+#define MAX_IMAGE_CYCLE_N       10                  // up to how many images can be added to a defined cycle
 
-#define DEFAULT_SCAN_IMAGE_DUR_SEC      60*5      // sec, the default duration for the image scan mode
+#define MIN_PLAYLIST_DUR        0.5                 // min, minimum duration for playlist
+
+#define DEFAULT_SCAN_IMAGE_DUR_MIN      5           // min, the default duration for the image scan mode
 
 ////////// Other defines
 #define EVER    ;;

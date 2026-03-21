@@ -13,6 +13,8 @@ typedef enum{
     WIFI_FAIL_BIT           = BIT1,
 }wifiEventsBits_e;
 
+#define HTTPD_MAX_URI_HANDLERS  32
+
 void wifiInit(void);
 void startHttpServer(void);
 

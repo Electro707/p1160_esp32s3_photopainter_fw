@@ -28,6 +28,7 @@
 #include "esp_log.h"
 #include "esp_pm.h"
 #include "nvs_flash.h"
+#include "esp_random.h"
 
 #include "common.h"
 #include "main.h"
@@ -35,16 +36,7 @@
 #include "network.h"
 #include "fileSys.h"
 
-struct{
-    TickType_t period_ticks;      // the duration of the cycle in ticks. Must NOT be less than 12-15 seconds due to display refresh rate
-    char imgCycleSel[MAX_IMAGE_CYCLE_N][MAX_IMAGE_NAME_LEN];
-    u32 imgCycleSelTotal;       // number of images to cycle through
-    imgCycleMode_e mode;
-    // internal variables
-    u32 cycleAllImgN;       // the current image index
-    TimerHandle_t handler;
-}imgCycleSettings;
-
+imgCycleSettings_t imgCycleSettings = { 0 };
 mode_e runMode;
 
 spi_device_handle_t dispSpi;        // global spi device
@@ -181,10 +173,12 @@ void app_main(void){
     pmicTelemetryMutex = xSemaphoreCreateMutex();
 
     // todo debug values. Have them default to something and load them from nvm
-    imgCycleSettings.period_ticks = pdTICKS_TO_MS(1000 * DEFAULT_SCAN_IMAGE_DUR_SEC);
-    imgCycleSettings.mode = IMAGE_CYCLE_MODE_ALL;
-    imgCycleSettings.handler = xTimerCreate("imgCycle", imgCycleSettings.period_ticks, pdTRUE, ( void * )0, taskTimerImageCycler);
+    imgCycleSettings.period_ticks = configTICK_RATE_HZ * 60 * DEFAULT_SCAN_IMAGE_DUR_MIN;
+    imgCycleSettings.mode = IMAGE_CYCLE_MODE_RANDOM;
     runMode = MODE_STANDBY;
+
+    // create the image playlist timer
+    imgCycleSettings.handler = xTimerCreate("imgCycle", imgCycleSettings.period_ticks, pdTRUE, ( void * )0, taskTimerImageCycler);
 
     wifiInit();
     startHttpServer();
@@ -198,19 +192,31 @@ void app_main(void){
                             &pmicTelemTask_h, 0);
 }
 
-mode_e getMode(void){
-    return runMode;
-}
-
-setModeRet_e setMode(mode_e newMode){
+setModeRet_e setMode(mode_e newMode){  
     if(newMode == MODE_IMAGE_CYCLE){
+        // set imgCycleTotalImg before going into the mode
+        if(fileSysGetAvailableImages(NULL, &imgCycleSettings.imgCycleTotalImg)){
+            return RET_SET_MODE_ERR;
+        }
+        // check we have images available. Should be at least 2 for an image playlist to work as a playlist
+        if(imgCycleSettings.imgCycleTotalImg < 2){
+            return RET_SET_MODE_IMG_NO_IMG;
+        }
+        // check we have images selected if in selection mode
         if(imgCycleSettings.mode == IMAGE_CYCLE_MODE_SELECTED){
-            if(imgCycleSettings.imgCycleSelTotal == 0){
+            u32 sum = 0;    // really cheeky way to see if we have any image available. because the available variable
+                            // will just be 1 or 0, we can just sum the array and check if the sum is 0, meaning no image
+                            // is present
+            for(int i=0;i<MAX_IMAGE_CYCLE_N;i++){
+                sum += imgCycleSettings.imgCycleSelAvail[i];
+            }
+            if(sum == 0){
                 return RET_SET_MODE_IMG_CYCLE_NONE_SET;
             }
         }
-        imgCycleSettings.cycleAllImgN = 0;
-        xTimerStart(imgCycleSettings.handler, 0);
+        imgCycleSettings.cycleCurrIdx = 0;
+        xTimerChangePeriod(imgCycleSettings.handler, imgCycleSettings.period_ticks, pdTICKS_TO_MS(100));
+        // xTimerStart(imgCycleSettings.handler, 0);        // above change period causes it to start
     } else {
         xTimerStop(imgCycleSettings.handler, 0);
     }
@@ -227,9 +233,10 @@ u32 dispTrigUpdate(void){
     return 0;
 }
 
-#define s imgCycleSettings
+#define s imgCycleSettings      // nice macro as I don't feel like calling the long struct name for the function below
 void taskTimerImageCycler(TimerHandle_t xTimer){
     fSysRet stat;
+    u32 n;
 
     u8 *destBuff = takeDispFb(pdTICKS_TO_MS(100));
     if(destBuff == NULL){
@@ -237,16 +244,48 @@ void taskTimerImageCycler(TimerHandle_t xTimer){
         return;
     }
 
+    // todo: should fileSysGetAvailableImages be called here? if an image is added AFTER the mode is started, they are not
+    //       taken into account
+
     // if in all mode, cycle through all images on the SD card
-    if(s.mode == IMAGE_CYCLE_MODE_ALL){
-        stat = fileSysLoadNextImageFromIdx(&s.cycleAllImgN, destBuff);
+    switch(s.mode){
+        case IMAGE_CYCLE_MODE_ALL:
+            stat = fileSysLoadNextImageFromIdx(s.cycleCurrIdx, destBuff);
+            s.cycleCurrIdx++;
+            s.cycleCurrIdx %= s.imgCycleTotalImg;
+            break;
+        case IMAGE_CYCLE_MODE_RANDOM:
+            u32 newIdx;
+            n = 20;        // just some upper limiter rather than while(1)
+            // ensure the next random image is different from the current one
+            while(n--){
+                newIdx = esp_random() % s.imgCycleTotalImg;
+                if(newIdx != s.cycleCurrIdx) break;
+            }
+            s.cycleCurrIdx = newIdx;
+            stat = fileSysLoadNextImageFromIdx(s.cycleCurrIdx, destBuff);
+            break;
+        case IMAGE_CYCLE_MODE_SELECTED:
+            n = MAX_IMAGE_CYCLE_N;
+            while(n--){
+                if(s.imgCycleSelAvail[s.cycleCurrIdx]){
+                    break;
+                }
+                s.cycleCurrIdx++;
+                s.cycleCurrIdx %= MAX_IMAGE_CYCLE_N;
+            }
+            if(n == 0){
+                // this should never occur, there always should be the next image to load if wrapping around the entire list
+                abort();
+            }
+            stat = fileSysLoadImage(s.imgCycleSel[s.cycleCurrIdx], destBuff, false);
+            s.cycleCurrIdx++;
+            s.cycleCurrIdx %= MAX_IMAGE_CYCLE_N;
+            break;
+        default:
+            abort();
+            break;
     }
-    else if(s.mode == IMAGE_CYCLE_MODE_SELECTED){
-        stat = fileSysLoadImage(s.imgCycleSel[s.cycleAllImgN], destBuff, false);
-    }else{
-        abort();
-    }
-    s.cycleAllImgN++;
     
     releaseDispFb();
     if(stat == FILE_SYS_RET_OK){
@@ -280,12 +319,15 @@ void taskDispUpdate(void *args){
         xTaskNotifyStateClear(NULL);
         xTaskNotifyWait(ULONG_MAX, 0, NULL, portMAX_DELAY);
         esp_pm_lock_acquire(sleepLockHandle);
-
+#ifdef DEBUG_DISABLE_DISPLAY_UPDATE
+        ESP_LOGI(TAG, "Mock updating display");
+#else
         pmicEnableLDOs();
         delayMs(100);            // some boot up time, todo: instrument
         dispBoot();
         dispUpdate();
         pmicDisableLDOs();      // after we are done, shut down the display
+#endif
         
         esp_pm_lock_release(sleepLockHandle);       // we-allow sleep mode
     }

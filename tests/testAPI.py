@@ -1,5 +1,4 @@
 #!/bin/python
-import pytest
 import requests
 import json
 import click
@@ -109,7 +108,7 @@ def updateDisplay(ctx: click.Context) -> None:
     url = createUrl(ctx.obj['url'], 'disp/update')
     commonApiRequest(url, 'POST')
 
-@display.command(name='getAvailable')
+@display.command(name='listCard')
 @click.pass_context
 def getAvailableImg(ctx: click.Context) -> None:
     """
@@ -152,6 +151,42 @@ def delImage(ctx: click.Context, name: str) -> None:
     """
     url = createUrl(ctx.obj['url'], 'img/delete')
     commonApiRequest(url, 'POST', {'name': name})
+
+########## Image Cycle Selection Sub-Group ##########
+@display.group('imgCycle')
+@click.pass_context
+def imgCycle(ctx: click.Context):
+    pass
+
+@imgCycle.command('list')
+@click.pass_context
+def imgCycleList(ctx: click.Context) -> None:
+    """
+    Lists the images available for cycling
+    """
+    url = createUrl(ctx.obj['url'], 'img/cycle/get')
+    commonApiRequest(url, 'GET')
+
+@imgCycle.command('add')
+@click.argument('name', type=str)
+@click.pass_context
+def imgCycleAdd(ctx: click.Context, name: str) -> None:
+    """
+    Lists the images available for cycling
+    """
+    url = createUrl(ctx.obj['url'], 'img/cycle/add')
+    commonApiRequest(url, 'POST', {'name': name})
+
+@imgCycle.command('del')
+@click.argument('name', type=str)
+@click.pass_context
+def imgCycleDel(ctx: click.Context, name: str) -> None:
+    """
+    Lists the images available for cycling
+    """
+    url = createUrl(ctx.obj['url'], 'img/cycle/del')
+    commonApiRequest(url, 'POST', {'name': name})
+
 
 if __name__ == "__main__":
     cli(obj={})

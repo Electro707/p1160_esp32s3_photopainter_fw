@@ -16,7 +16,7 @@ WORD_ALIGNED_ATTR EXT_RAM_BSS_ATTR u8 sdCardFrameBuff[DISP_FB_SIZE];
 
 
 static void getImagePath(const char *imgName, char *outName, u32 maxLen){
-    snprintf(outName, maxLen, IMAGE_DIR "/%s.raw", imgName);
+    snprintf(outName, maxLen, IMAGE_DIR "/%s.RAW", imgName);
 }
 
 fSysRet initFs(void){
@@ -56,12 +56,13 @@ int deInitFs(void){
     return fsStat;
 }
 
-fSysRet fileSysGetAvailableImages(cJSON *jsonArr){
+fSysRet fileSysGetAvailableImages(cJSON *jsonArr, u32 *count){
     FRESULT fsStat;
     FF_DIR imageDir;
     FILINFO fno;
 
     cJSON *string_item;
+    char *dotIdx;
 
     fsStat = f_opendir(&imageDir, IMAGE_DIR);
     if(fsStat != FR_OK){
@@ -77,9 +78,22 @@ fSysRet fileSysGetAvailableImages(cJSON *jsonArr){
             // todo: maybe allow for sub-structures
             continue;
         } else {
-            // todo: filter by .raw extension
-            string_item = cJSON_CreateString(fno.fname);
-            cJSON_AddItemToArray(jsonArr, string_item);
+            // filter by .raw extension
+            dotIdx = strrchr(fno.fname, '.');
+            if(dotIdx == NULL){     // don't allow extension-less names
+                continue;
+            }
+            if(strcmp(dotIdx, ".RAW") != 0){
+                continue;
+            }
+            if(jsonArr){
+                *dotIdx = '\0';      // effectively remove extension from listed images
+                string_item = cJSON_CreateString(fno.fname);
+                cJSON_AddItemToArray(jsonArr, string_item);
+            }
+            if(count){
+                (*count)++;
+            }
         }
     }
     f_closedir(&imageDir);
@@ -133,6 +147,8 @@ fSysRet fileSysLoadImage(const char* imgName, u8 *datOut, bool isNameDirect){
     UINT nRead;
     fSysRet ret = FILE_SYS_RET_OK;
 
+    ESP_LOGI(TAG, "Loading image %s", imgName);
+
     if(isNameDirect){
         snprintf(imagePath, sizeof(imagePath), IMAGE_DIR "/%s", imgName);
     } else {
@@ -143,7 +159,6 @@ fSysRet fileSysLoadImage(const char* imgName, u8 *datOut, bool isNameDirect){
         getImagePath(imgName, imagePath, sizeof(imagePath));
     }
     
-    ESP_LOGI(TAG, "Loading image %s", imagePath);
     fsStat = f_open(&file, imagePath, FA_READ);
     if(fsStat != FR_OK){
         ESP_LOGW(TAG, "Unable to open file for writing");
@@ -159,21 +174,12 @@ fSysRet fileSysLoadImage(const char* imgName, u8 *datOut, bool isNameDirect){
     return ret;
 }
 
-/**
- * dev notes: initially I tried keeping the DIR object intact and just use readdir per iteration, but looking more
- * into FatFS, FF_FS_REENTRANT is enabled, so the volume is locked unless closeDir is used.
- *  
- * Either I, head of time, read through all images and store their indexes, or per loop go through as many file as
- * I need to reach the end. I prefer the latter as with the former, I would not know during compile time how
- * many files strings I would need to allocate, and dynamic memory can get messy.
- */
-fSysRet fileSysLoadNextImageFromIdx(u32 *lastIdx, u8 *datOut){
+fSysRet fileSysLoadNextImageFromIdx(u32 imgIdx, u8 *datOut){
     FRESULT fsStat;
     FILINFO fno;
     fSysRet ret;
     FF_DIR imageDir;
-    int fileCnt = -1;
-
+    int fileCnt = 0;
 
     fsStat = f_opendir(&imageDir, IMAGE_DIR);
     if(fsStat != FR_OK){
@@ -182,34 +188,27 @@ fSysRet fileSysLoadNextImageFromIdx(u32 *lastIdx, u8 *datOut){
     }
     while(1){   // todo: timeout
         fsStat = f_readdir(&imageDir, &fno);
-        if (fno.fname[0] == 0){
-            if(fileCnt == -1) return FILE_SYS_NO_FILE_FOUND;       // no files in directory
-            // if no more files are found, restart counter
-            f_readdir(&imageDir, NULL);
-            fileCnt = -1;
-            *lastIdx = 0;
-            continue;
+        if (fno.fname[0] == 0){         // no file around
+            break;
         }
         if (fno.fattrib & AM_DIR) {
             // skip directories for now, a flag structure
             // todo: maybe allow for sub-structures
             continue;
         }
+        if(fileCnt == imgIdx) break;
         fileCnt++;
-        if(fileCnt == *lastIdx) break;
     }
     f_closedir(&imageDir);
 
-    if(fileCnt < *lastIdx){
+    if(fileCnt < imgIdx){
         return FILE_SYS_NO_FILE_FOUND;
     }
-    (*lastIdx)++;
         
     ret = fileSysLoadImage((const char *)fno.fname, datOut, true);
     return ret;
 }
 
-// todo: fileSysLoadNextImageFromIdx reset
 
 fSysRet fileSysSaveImage(const char* imgName){
     FRESULT fsStat;

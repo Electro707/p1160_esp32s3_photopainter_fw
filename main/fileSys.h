@@ -40,11 +40,11 @@ fSysRet initFs(void);
 fSysRet mountFs(void);
 
 /**
- * Finds all available images and fills a cJSON array object
+ * Finds all available images and fills a cJSON array object or a counter variable
  * 
  * Returns 0 on success, other values on failure
  */
-fSysRet fileSysGetAvailableImages(cJSON *jsonArr);
+fSysRet fileSysGetAvailableImages(cJSON *jsonArr, u32 *count);
 
 /**
  * Returns 0 if the image name given is a valid and available file
@@ -55,7 +55,10 @@ fSysRet fileSysOpenImage(const char *imgName, FIL *file);
 
 fSysRet fileSysLoadImage(const char* imgName, u8 *datOut, bool isNameDirect);
 
-fSysRet fileSysLoadNextImageFromIdx(u32 *lastIdx, u8 *datOut);
+/**
+ * Loads an image from a given file index to the buffer datOut
+ */
+fSysRet fileSysLoadNextImageFromIdx(u32 imgIdx, u8 *datOut);
 
 /**
  * Saves the local image buffer (sdCardFrameBuff) to an image file

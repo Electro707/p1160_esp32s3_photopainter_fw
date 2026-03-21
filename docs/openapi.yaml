@@ -84,10 +84,97 @@ paths:
                   stat:
                     type: string
                     const: "I'm a teapot"
+  
+  /mode:
+    get:
+      description: "Gets the current operational mode"
+      responses:
+        "200":
+          description: Information on the operational mode of the photo frame
+          content:
+            application/json:
+              schema:
+                properties:
+                  stat:
+                    type: string
+                    const: "ok"
+                  mode:
+                    type: string
+                    description: "The firmware version"
+                    enum:
+                      - "standby"
+                      - "cycle"
+                      - "error"
+                  cycle:
+                    type: object
+                    properties:
+                      mode:
+                        type: string
+                        description: "The firmware version"
+                        enum:
+                          - "select"
+                          - "all"
+                          - "random"
+                          - "error"
+                      duration:
+                        type: number
+                        description: "The slideshow time, in minutes"
+                examples:
+                  - stat: "ok"
+                    mode: "cycle"
+                    cycle:
+                      mode: "random"
+                      duration: 4.5
+    post:
+      description: "To set the device operational mode"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode:
+                  type: string
+                  description: "The mode to set the photo frame to"
+                  enum:
+                      - "standby"
+                      - "cycle"
+                cycle:
+                  type: object
+                  properties:
+                    mode:
+                      type: string
+                      description: "The cycle mode"
+                      enum:
+                        - "select"
+                        - "all"
+                        - "random"
+                    duration:
+                      type: number
+                      description: "The slideshow time, in minutes"
+              examples:
+                - mode: "standby"
+                - cycle:
+                    mode: "all"
+                - cycle:
+                    mode: "random"
+                    duration: 1.0
+                - mode: "cycle"
+                  cycle:
+                    mode: "random"
+                    duration: 5.0
+      responses:
+        "200":
+          $ref: '#/components/responses/PostOKResponse'
+        "400":
+          $ref: '#/components/responses/PostErrorResponse'
+        "500":
+          $ref: '#/components/responses/PostErrorResponse'
 
   /disp/setFb:
     post:
-      summary: To upload a raw framebuffer to the device and update the display
+      summary: To upload a raw framebuffer to the device
       tags:
         - Display
       requestBody:
@@ -133,6 +220,8 @@ paths:
           application/json:
             schema:
               type: object
+              required:
+                - checkSize
               properties:
                 checkSize:
                   type: integer
@@ -163,7 +252,7 @@ paths:
                   currentMode:
                     type: string
                     description: "The current wifi connection mode"
-                    const:
+                    enum:
                       - "null"
                       - "sta"
                       - "ap"
@@ -189,6 +278,9 @@ paths:
           application/json:
             schema:
               type: object
+              required:
+                - ssid
+                - pass
               properties:
                 ssid:
                   type: string
@@ -240,14 +332,15 @@ paths:
                     type: integer
                     description: "The battery percentage"
                   vBusGood:
-                    type: oo
+                    type: bool
                     description: "If usb power is present"
                   battPresent:
-                    type: oo
+                    type: bool
                     description: "If a battery is present"
                   currLimited:
                     type: bool
                     description: "If currently is limited by the pmic"
+
   /img/available:
     get:
       summary: "Gets all available images on the SD card"
@@ -288,6 +381,8 @@ paths:
           application/json:
             schema:
               type: object
+              required:
+                - name
               properties:
                 name:
                   type: string
@@ -338,6 +433,8 @@ paths:
           application/json:
             schema:
               type: object
+              required:
+                - name
               properties:
                 name:
                   type: string
@@ -349,6 +446,7 @@ paths:
           $ref: '#/components/responses/PostErrorResponse'
         "500":
           $ref: '#/components/responses/PostErrorResponse'
+  
   /img/delete:
     post:
       summary: "To delete an image from the sd card"
@@ -360,6 +458,8 @@ paths:
           application/json:
             schema:
               type: object
+              required:
+                - name
               properties:
                 name:
                   type: string
@@ -371,3 +471,83 @@ paths:
           $ref: '#/components/responses/PostErrorResponse'
         "500":
           $ref: '#/components/responses/PostErrorResponse'
+  
+  /img/cycle/add:
+    post:
+      description: "To add an image in the list to be cycled"
+      tags:
+        - Image Management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: "The image name to add to the cycle"
+      responses:
+        "200":
+          $ref: '#/components/responses/PostOKResponse'
+        "400":
+          $ref: '#/components/responses/PostErrorResponse'
+        "500":
+          $ref: '#/components/responses/PostErrorResponse'
+
+  /img/cycle/del:
+    post:
+      description: "To delete an image in the list to be cycled"
+      tags:
+        - Image Management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: "The image name to add to the cycle"
+      responses:
+        "200":
+          $ref: '#/components/responses/PostOKResponse'
+        "400":
+          $ref: '#/components/responses/PostErrorResponse'
+        "500":
+          $ref: '#/components/responses/PostErrorResponse'
+
+  /img/cycle/get:
+    get:
+      description: "To get all images in the list to be cycled"
+      tags:
+        - Image Management
+      responses:
+        "200":
+          description: |
+            A JSON containing all image names.
+            Note that the .RAW extension is added on. This should not be used in other requests, it's a todo to remove
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stat:
+                    type: string
+                    const: "ok"
+                  img:
+                    type: array
+                    description: "An array of all available images on the card. May be empty"
+                examples:
+                  - stat: "ok"
+                    img:
+                      - "Image1.RAW"
+                      - "Image2.RAW"
+        "500":
+          $ref: '#/components/responses/PostErrorResponse'
+

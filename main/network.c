@@ -192,7 +192,7 @@ static esp_err_t handleUriGetImgAvailable(httpd_req_t *req){
     cJSON_AddStringToObject(jRoot, "stat", "ok");
     cJSON * jArr = cJSON_AddArrayToObject(jRoot, "img");
 
-    ret = fileSysGetAvailableImages(jArr);
+    ret = fileSysGetAvailableImages(jArr, NULL);
     if(ret){
         ESP_LOGW(TAG, "Unable to get images in directory");
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"Directory Fail\"}");
@@ -206,6 +206,36 @@ static esp_err_t handleUriGetImgAvailable(httpd_req_t *req){
             httpd_resp_sendstr(req, jsonPrint);
             ret = ESP_OK;
         }
+    }
+
+    cJSON_Delete(jRoot);
+    return ret;
+}
+
+static esp_err_t handleUriGetCycleImages(httpd_req_t *req){
+    esp_err_t ret;
+    cJSON *jRoot;
+    char *jsonPrint;
+    cJSON *string_item;
+
+    httpd_resp_set_type(req, "application/json");
+    jRoot = cJSON_CreateObject();
+    cJSON_AddStringToObject(jRoot, "stat", "ok");
+    cJSON * jArr = cJSON_AddArrayToObject(jRoot, "img");
+    for(int i=0;i<MAX_IMAGE_CYCLE_N;i++){
+        if(imgCycleSettings.imgCycleSelAvail[i]){
+            string_item = cJSON_CreateString(imgCycleSettings.imgCycleSel[i]);
+            cJSON_AddItemToArray(jArr, string_item);
+        }
+    }
+
+    jsonPrint = cJSON_PrintUnformatted(jRoot);
+    if(jsonPrint == NULL){
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"CJSON Fail\"}");
+        ret = ESP_FAIL;
+    } else {
+        httpd_resp_sendstr(req, jsonPrint);
+        ret = ESP_OK;
     }
 
     cJSON_Delete(jRoot);
@@ -530,7 +560,7 @@ static esp_err_t handleUriDeleteImage(httpd_req_t *req){
 
     const cJSON *jImgName = cJSON_GetObjectItem(jRoot, "name");
     if (!cJSON_IsString(jImgName)){
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"JSON invalid: imgName not a string\"}");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"JSON invalid: name not a string\"}");
         ret = ESP_FAIL;
         goto cleanup;
     }
@@ -560,6 +590,118 @@ cleanup:
 
 }
 
+static esp_err_t handleUriImgCycleAdd(httpd_req_t *req){
+    esp_err_t ret;
+    char *contextBuff;
+    cJSON *jRoot = NULL;
+
+    httpd_resp_set_type(req, "application/json");
+
+    if(getJsonFromReq(req, &contextBuff, &jRoot)){
+        ret = ESP_FAIL;
+        goto cleanup;
+    }
+
+    const cJSON *jImgName = cJSON_GetObjectItem(jRoot, "name");
+    if (!cJSON_IsString(jImgName)){
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"JSON invalid: name not a string\"}");
+        ret = ESP_FAIL;
+        goto cleanup;
+    }
+    if(fileSysIsImageValid(jImgName->valuestring)){
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"invalid file, not on disk\"}");
+        ret = ESP_FAIL;
+        goto cleanup;
+    }
+
+    // first, check if it exists, then if not actually add
+    int freeSpot = -1;    // as we are already going through the list anyways, if an empty spot is added record it
+    for(int i=0;i<MAX_IMAGE_CYCLE_N;i++){
+        if(imgCycleSettings.imgCycleSelAvail[i]){
+            // if we find the same image, we already added it. Don't add it again
+            if(strcmp(imgCycleSettings.imgCycleSel[i], jImgName->valuestring) == 0){
+                httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"image already exists in playlist\"}");
+                ret = ESP_FAIL;
+                goto cleanup;
+            }
+        } else if(freeSpot == -1){
+            freeSpot = i;
+        }
+    }
+
+    if(freeSpot == -1){
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"No more room to add image\"}");
+        ret = ESP_FAIL;
+        goto cleanup;
+    }
+    // then add it
+    strcpy(imgCycleSettings.imgCycleSel[freeSpot], jImgName->valuestring);
+    imgCycleSettings.imgCycleSelAvail[freeSpot] = 1;
+
+    httpd_resp_sendstr(req, "{\"stat\": \"ok\"}");
+    ret = ESP_OK;
+
+
+cleanup:
+    cJSON_Delete(jRoot);
+    free(contextBuff);
+    return ret;
+}
+
+
+static esp_err_t handleUriImgCycleDel(httpd_req_t *req){
+    esp_err_t ret;
+    char *contextBuff;
+    cJSON *jRoot = NULL;
+
+    httpd_resp_set_type(req, "application/json");
+
+    if(getJsonFromReq(req, &contextBuff, &jRoot)){
+        ret = ESP_FAIL;
+        goto cleanup;
+    }
+
+    const cJSON *jImgName = cJSON_GetObjectItem(jRoot, "name");
+    if (!cJSON_IsString(jImgName)){
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"JSON invalid: name not a string\"}");
+        ret = ESP_FAIL;
+        goto cleanup;
+    }
+
+    // add check if we are currently in the cycle selected mode, don't allow deletion as it remove the last
+    //  available image, causing cascading of issues
+    if(runMode == MODE_IMAGE_CYCLE && imgCycleSettings.mode == IMAGE_CYCLE_MODE_SELECTED){
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"current running in mode, stop image cycling to remove\"}");
+        ret = ESP_FAIL;
+        goto cleanup;
+    }
+
+    int i;
+    for(i=0;i<MAX_IMAGE_CYCLE_N;i++){
+        if(imgCycleSettings.imgCycleSelAvail[i]){
+            if(strcmp(imgCycleSettings.imgCycleSel[i], jImgName->valuestring) == 0){
+                imgCycleSettings.imgCycleSelAvail[i] = 0;
+                break;
+            }
+        }
+    }
+    if(i == MAX_IMAGE_CYCLE_N){
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"Image not found to delete\"}");
+        ret = ESP_FAIL;
+        goto cleanup;
+    }
+
+    httpd_resp_sendstr(req, "{\"stat\": \"ok\"}");
+    ret = ESP_OK;
+
+
+cleanup:
+    cJSON_Delete(jRoot);
+    free(contextBuff);
+    return ret;
+}
+
+
 static esp_err_t handleUriGetMode(httpd_req_t *req){
     esp_err_t ret;
     cJSON *jRoot;
@@ -570,7 +712,7 @@ static esp_err_t handleUriGetMode(httpd_req_t *req){
     jRoot = cJSON_CreateObject();
 
     cJSON_AddStringToObject(jRoot, "stat", "ok");
-    switch(getMode()){
+    switch(runMode){
         case MODE_STANDBY:
             strToFill = "standby";
             break;
@@ -578,11 +720,31 @@ static esp_err_t handleUriGetMode(httpd_req_t *req){
             strToFill = "cycle";
             break;
         default:
-            strToFill = "Error";
+            strToFill = "error";
             break;
     }
     cJSON_AddStringToObject(jRoot, "mode", strToFill);
 
+    const cJSON *jCycle = cJSON_AddObjectToObject(jRoot, "cycle");
+    cJSON_AddStringToObject(jRoot, "stat", "ok");
+    switch(imgCycleSettings.mode){
+        case IMAGE_CYCLE_MODE_SELECTED:
+            strToFill = "select";
+            break;
+        case IMAGE_CYCLE_MODE_ALL:
+            strToFill = "all";
+            break;
+        case IMAGE_CYCLE_MODE_RANDOM:
+            strToFill = "random";
+            break;
+        default:
+            strToFill = "Error";
+            break;
+    }
+    cJSON_AddStringToObject(jCycle, "mode", strToFill);
+    cJSON_AddNumberToObject(jCycle, "duration", (((float)imgCycleSettings.period_ticks) / ((float)configTICK_RATE_HZ) / 60.0));
+
+    
     jsonPrint = cJSON_PrintUnformatted(jRoot);
     if(jsonPrint == NULL){
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"CJSON Fail\"}");
@@ -601,6 +763,8 @@ static esp_err_t handleUriSetOperationMode(httpd_req_t *req){
     char *contextBuff;
     cJSON *jRoot = NULL;
 
+    const cJSON *jObj;
+
     httpd_resp_set_type(req, "application/json");
 
     if(getJsonFromReq(req, &contextBuff, &jRoot)){
@@ -608,39 +772,74 @@ static esp_err_t handleUriSetOperationMode(httpd_req_t *req){
         goto cleanup;
     }
 
-    const cJSON *jMode = cJSON_GetObjectItem(jRoot, "mode");
-    if (!cJSON_IsString(jMode)){
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"JSON invalid: mode not a string\"}");
-        ret = ESP_FAIL;
-        goto cleanup;
-    }
-
-    if(strcmp(jMode->valuestring, "standby") == 0){
-        setModeRet_e stat = setMode(MODE_STANDBY);
-        if(stat){
-            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"internal error\"}");
-            ret = ESP_FAIL;
-            goto cleanup;
-        }
-    }
-    else if(strcmp(jMode->valuestring, "cycle") == 0){
-        setModeRet_e stat = setMode(MODE_IMAGE_CYCLE);
-        if(stat){
-            if(stat == RET_SET_MODE_IMG_CYCLE_NONE_SET){
-                httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"no images selected for cycle mode\"}");
+    // handle if the playlist config are to be changed
+    jObj = cJSON_GetObjectItem(jRoot, "cycle");
+    if (cJSON_IsObject(jObj)){
+        const cJSON *jCycle;
+        jCycle = cJSON_GetObjectItem(jObj, "mode");
+        if (cJSON_IsString(jCycle)){
+            if(strcmp(jCycle->valuestring, "select") == 0){
+                imgCycleSettings.mode = IMAGE_CYCLE_MODE_SELECTED;
+            }
+            else if(strcmp(jCycle->valuestring, "all") == 0){
+                imgCycleSettings.mode = IMAGE_CYCLE_MODE_ALL;
+            }
+            else if(strcmp(jCycle->valuestring, "random") == 0){
+                imgCycleSettings.mode = IMAGE_CYCLE_MODE_RANDOM;
             }
             else{
-                httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"internal error\"}");
+                httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"invalid playlist mode\"}");
+                ret = ESP_FAIL;
+                goto cleanup;
             }
+        }
+
+        jCycle = cJSON_GetObjectItem(jObj, "duration");
+        if (cJSON_IsNumber(jCycle)){
+            double timeSet = jCycle->valuedouble;
+            if(timeSet < MIN_PLAYLIST_DUR){
+                httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"playlist duration less than minimum of 30 sec\"}");
+                ret = ESP_FAIL;
+                goto cleanup;
+            }
+            timeSet *= 60;      // to seconds from minutes
+            timeSet *= configTICK_RATE_HZ;      // to the tick rate
+            imgCycleSettings.period_ticks = (TickType_t)timeSet;
+        }
+    }
+
+    // handle the mode setting last
+    jObj = cJSON_GetObjectItem(jRoot, "mode");
+    // if "mode" was given
+    if (cJSON_IsString(jObj)){
+        if(strcmp(jObj->valuestring, "standby") == 0){
+            setModeRet_e stat = setMode(MODE_STANDBY);
+            if(stat){
+                httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"internal error\"}");
+                ret = ESP_FAIL;
+                goto cleanup;
+            }
+        }
+        else if(strcmp(jObj->valuestring, "cycle") == 0){
+            setModeRet_e stat = setMode(MODE_IMAGE_CYCLE);
+            if(stat){
+                if(stat == RET_SET_MODE_IMG_CYCLE_NONE_SET){
+                    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"no images selected for cycle mode\"}");
+                }
+                else{
+                    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"internal error\"}");
+                }
+                ret = ESP_FAIL;
+                goto cleanup;
+            }
+        }
+        else{
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"invalid mode\"}");
             ret = ESP_FAIL;
             goto cleanup;
         }
     }
-    else{
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"invalid mode\"}");
-        ret = ESP_FAIL;
-        goto cleanup;
-    }
+    
 
     httpd_resp_sendstr(req, "{\"stat\": \"ok\"}");
     ret = ESP_OK;
@@ -833,8 +1032,8 @@ void wifiInit(void){
 
 void startHttpServer(void){
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 16;
-    config.stack_size = 4096*4;
+    config.max_uri_handlers = HTTPD_MAX_URI_HANDLERS;
+    config.stack_size = 4096*5;
     // config.uri_match_fn = httpd_uri_match_wildcard;
 
     httpd_start(&server, &config);
@@ -869,6 +1068,10 @@ void startHttpServer(void){
 
     uriMatch.handler = handleUriGetMode;
     uriMatch.uri = "/api/v1/mode";
+    httpd_register_uri_handler(server, &uriMatch);
+
+    uriMatch.handler = handleUriGetCycleImages;
+    uriMatch.uri = "/api/v1/img/cycle/get";
     httpd_register_uri_handler(server, &uriMatch);
 
     /**** POST commands */
@@ -907,6 +1110,14 @@ void startHttpServer(void){
 
     uriMatch.handler = handleUriDeleteImage;
     uriMatch.uri = "/api/v1/img/delete";
+    httpd_register_uri_handler(server, &uriMatch);
+
+    uriMatch.handler = handleUriImgCycleAdd;
+    uriMatch.uri = "/api/v1/img/cycle/add";
+    httpd_register_uri_handler(server, &uriMatch);
+
+    uriMatch.handler = handleUriImgCycleDel;
+    uriMatch.uri = "/api/v1/img/cycle/del";
     httpd_register_uri_handler(server, &uriMatch);
 
     uriMatch.handler = handleUriSetOperationMode;
