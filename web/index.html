@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>P1160 Control Page</title>
+        <style>
+            body {
+                color: rgb(194, 255, 242);
+                background-color: #4d4d4d;
+                padding: 0;
+                margin: 0 auto;
+                width: 90%;
+                max-width: 1200px;
+                font-size: 16px;
+            }
+            p {
+                margin: 0px 0px;
+            }
+            .frame {
+                background-color: #222222;
+                border-width: 2px;
+                border-color: white;
+                border-style: dotted;
+                width: 90%;
+                margin: 2px 2px;
+                padding: 5px;
+            }
+
+            .frame > .title {
+                font-weight: 800;
+                font-size: 22px;
+                font-style: italic;
+                margin-bottom: 1em;
+            }
+
+            .label > .lb {
+                font-weight: 600;
+            }
+
+            .imgList {
+
+            }
+
+            .imgList > div {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding-bottom: 5px;
+            }
+
+            .imgList > div > button {
+                border: 0px;
+                background: #555555;
+                color:rgb(194, 255, 242);
+            }
+
+            #mainView {
+                display: grid;
+                grid-template-columns: repeat(2, 50%);
+                justify-items: center;
+                align-items: center;
+                gap: 10px;
+                padding: 10px;
+            }
+        </style>
+    </head>
+
+    <body>
+        <div id="mainView">
+            <div class="label" id="ent_fwVer" style="grid-column: 1/span 2; grid-row: 1">
+                <span class="lb">Firmware Version: </span>
+                <span class="ent">-</span>
+            </div>
+
+            <div class="frame" style="grid-column: 1; grid-row: 2">
+                <p class="title">Current Wifi Info</p>
+                <div class="label" id="ent_wifiMode"></div>
+                <div class="label" id="ent_wifiSSID"></div>
+                <div class="label" id="ent_wifiPass"></div>
+                <button>Set Wifi and Connect</button>
+            </div>
+
+            <div class="frame" style="grid-column: 2; grid-row: 2">
+                <p class="title">Power Info</p>
+                <div class="label" id="ent_pmic_batV"></div>
+                <div class="label" id="ent_pmic_sysV"></div>
+                <div class="label" id="ent_pmic_usbV"></div>
+                <div class="label" id="ent_pmic_batPe"></div>
+                <div class="label" id="ent_pmic_vbusOk"></div>
+                <div class="label" id="ent_pmic_battPres"></div>
+                <div class="label" id="ent_pmic_currLim"></div>
+                <span><input type="checkbox" id="chk_pmic_autoRefresh"> Auto Refresh</span>
+            </div>
+
+            <div class="frame" style="grid-column: 1; grid-row: 3; display: grid;">
+                <p class="title" style="grid-column: 1/span 2; grid-row: 1">Operation Mode</p>
+                <div class="frame", id="frm_mode" style="grid-column: 1; grid-row: 2">
+                    <div class="label" id="ent_mode"></div>
+                </div>
+                <div class="frame", id="frm_playlist" style="grid-column: 2; grid-row: 2">
+                    <p class="title">Playlist Settings</p>
+                    <div class="label" id="ent_playlist_mode"></div>
+                    <div class="label" id="ent_playlist_dur"></div>
+                </div>
+                <div style="grid-column: 1/span 2; grid-row: 3">
+                    <button id="bt_mode_set">Set</button>
+                </div>
+            </div>
+
+            <div class="frame", id="frm_imgList" style="grid-column: 1/span 2; grid-row: 4">
+                <p class="title">Images on SD Card</p>
+                <div id="lst_imgList" class="imgList"></div>
+                <button>Add</button>
+            </div>
+        </div>
+
+    </body>
+
+    <script src="js.js"></script>
+</html>

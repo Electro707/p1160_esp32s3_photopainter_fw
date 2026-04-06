@@ -35,6 +35,13 @@ def version(ctx: click.Context) -> None:
     commonApiRequest(url, 'GET')
 
 @cli.command()
+@click.pass_context
+def power(ctx: click.Context) -> None:
+    """Gets power info from the device"""
+    url = createUrl(ctx.obj['url'], 'pmic')
+    commonApiRequest(url, 'GET')
+
+@cli.command()
 @click.option('-m', '--mode', type=str, default=None, help='The mode to set to if SET')
 @click.pass_context
 def mode(ctx: click.Context, mode: str) -> None:
@@ -76,6 +83,7 @@ def setInfo(ctx: click.Context, wifi_ssid, wifi_pass) -> None:
 @cli.group('display')
 @click.pass_context
 def display(ctx: click.Context):
+    """SUBGROUP: Display stuff"""
     pass
 
 @display.command('checker')
@@ -156,6 +164,7 @@ def delImage(ctx: click.Context, name: str) -> None:
 @display.group('playlist')
 @click.pass_context
 def playlist(ctx: click.Context):
+    """SUBGROUP: Playlist"""
     pass
 
 @playlist.command('list')
