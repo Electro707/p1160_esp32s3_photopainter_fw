@@ -5,9 +5,16 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>P1160 Control Page</title>
         <style>
+            /* https://colorany.com/color-palettes/hacking-and-technology-color-palettes/ */
+            :root {
+                --background: #111;
+                --fg: #00FF00;
+                --frmBg: #1E1E1E;
+                --imgListCheckBg: #4B0082;
+            }
             body {
-                color: rgb(194, 255, 242);
-                background-color: #4d4d4d;
+                color: var(--fg);
+                background-color: var(--background);
                 padding: 0;
                 margin: 0 auto;
                 width: 90%;
@@ -17,8 +24,17 @@
             p {
                 margin: 0px 0px;
             }
+
+            .actionBt {
+                border: 1px solid var(--fg);
+                padding: 8px 16px;
+                cursor: pointer;
+                background: none;
+                color: var(--fg);
+            }
+
             .frame {
-                background-color: #222222;
+                background-color: var(--frmBg);
                 border-width: 2px;
                 border-color: white;
                 border-style: dotted;
@@ -51,8 +67,8 @@
 
             .imgList > div > button {
                 border: 0px;
-                background: #555555;
-                color:rgb(194, 255, 242);
+                background: var(--imgListCheckBg);
+                color: var(--fg);
             }
 
             #mainView {
@@ -104,18 +120,20 @@
                     <div class="label" id="ent_playlist_dur"></div>
                 </div>
                 <div style="grid-column: 1/span 2; grid-row: 3">
-                    <button id="bt_mode_set">Set</button>
+                    <button class="actionBt" id="bt_mode_set">Set</button>
                 </div>
             </div>
 
             <div class="frame", id="frm_imgList" style="grid-column: 1/span 2; grid-row: 4">
                 <p class="title">Images on SD Card</p>
                 <div id="lst_imgList" class="imgList"></div>
-                <button>Add</button>
+                <button class="actionBt" id="bt_img_add">Add</button>
+                <!-- Non visible input -->
+                <input type="file" id="frm_fileInput" accept="image/*" style="display: none">
             </div>
         </div>
 
     </body>
 
-    <script src="js.js"></script>
+    <script type="module" src="js.js"></script>
 </html>

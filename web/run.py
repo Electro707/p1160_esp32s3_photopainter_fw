@@ -10,6 +10,7 @@ This was partially generated with ClaudeAI, with human oversight
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from socketserver import BaseServer
 from urllib.parse import urlparse, parse_qs
+import threading
 import urllib.request
 import json
 import os
@@ -52,6 +53,10 @@ class Esp32DeviceHandler(SimpleHTTPRequestHandler):
 
 class SimHttpHandlerVars:
     imgList = ["Image1.RAW", "Image2.RAW", "Image3.RAW"]
+
+    @classmethod
+    def reset(cls):
+        cls.imgList = ["Image1.RAW", "Image2.RAW", "Image3.RAW"]
 
 
 class SimHttpHandler(SimpleHTTPRequestHandler):
@@ -128,7 +133,27 @@ def main():
         raise UserWarning("Invalid MODE")
     
     print("Hosting web locally, go to http://localhost:8080")
-    HTTPServer(("", 8080), reqH).serve_forever()
+    server = HTTPServer(("", 8080), reqH)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    try:
+        while True:
+            cmd = input(">")
+            cmd = cmd.lower()
+            if cmd == 'quit':
+                print("Exiting")
+                break
+            elif cmd == 'reset':
+                print("Resetting image list")
+                SimHttpHandlerVars.reset()
+            else:
+                print("Unknown cmd")
+    except KeyboardInterrupt:
+        print("Exiting")
+
+    server.shutdown()
+
 
 
 if __name__ == "__main__":

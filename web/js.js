@@ -1,3 +1,5 @@
+import { PALETTES, loadImage, createCanvas, ditherImage, ditheredImgToBytes } from './imgProc.js';
+
 // @ts-check
 // helper to get the entry from a "frame"
 
@@ -11,7 +13,7 @@ const getEnt = (/** @type {string} */ id) => {
     return ent;
 };
 
-const boolToShownStr = (/** @type {bool} */ b) => {
+const boolToShownStr = (/** @type {boolean} */ b) => {
     return b ? "Yes" : "No";
 };
 
@@ -30,13 +32,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     createEntryFrame('ent_pmic_battPres', "Is Battery Present?", 'label');
     createEntryFrame('ent_pmic_currLim', "Is Current Limit?", 'label');
 
-    createEntryFrame('ent_mode', "Current Mode", 'option',
+    createEntryFrame('ent_mode', "Mode", 'option',
         {options: [["standby", "Standby"], ["playlist", "Playlist"]]}
     );
     createEntryFrame('ent_playlist_mode', "Playlist Mode", 'option',
         {options: [["all", "All"], ["select", "Select Some"], ["random", "Random"]]}
     );
-    createEntryFrame('ent_playlist_dur', "Cycle Duration", 'input');
+    createEntryFrame('ent_playlist_dur', "Cycle Duration (min)", 'input');
     
 
     // fetch the firmware version and put it to be processed
@@ -48,14 +50,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     getEnt('ent_mode').addEventListener('change', changeModeSel);
 
-    document.getElementById('bt_mode_set').onclick = function() {
-        const selVal = getEnt('ent_mode').value;
-        if(selVal == ""){
-            console.log("Selected value is -, cannot make request");
-            return;
-        }
-        makePostReqOk("/api/v1/mode", {"mode": selVal});
-    };
+    document.getElementById('bt_mode_set').onclick = clickSetMode;
 
     document.getElementById('chk_pmic_autoRefresh').addEventListener('change', function() {
         if (this.checked) {
@@ -70,6 +65,9 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
         }
     });
+
+    document.getElementById('frm_fileInput').addEventListener('change', clickAddImgPart2);
+    document.getElementById('bt_img_add').onclick = clickAdddImg;
 });
 
 /**
@@ -172,7 +170,7 @@ function apiGetPmicInfo(){
             }
             return;
         }
-
+        console.log(j);
         getEnt('ent_pmic_batV').textContent = j['battVolt'].toFixed(2);
         getEnt('ent_pmic_sysV').textContent = j['sysVolt'].toFixed(2);
         getEnt('ent_pmic_usbV').textContent = j['vBusVolt'].toFixed(2);
@@ -242,12 +240,52 @@ function makePostReqOk(path, dat, after = null){
     });
 }
 
+function clickSetMode(){
+    const selVal = getEnt('ent_mode').value;
+    const playlistMode = getEnt('ent_playlist_mode').value;
+    const playlistDur = getEnt('ent_playlist_dur').value;
+    const playlistDurInt = parseInt(playlistDur);
+    if(selVal == ""){
+        console.log("Selected value is -, cannot make request");
+        return;
+    }
+    makePostReqOk("/api/v1/mode", {"mode": selVal, "playlist": {"mode": playlistMode, "duration": playlistDurInt}});
+}
+
 /**
+ * Callback when we clicked to delete an image
  * 
  * @param {string} imgName 
  */
 function clickDeleteImg(imgName){
+    if(!confirm("Are you sure you want to delete this image?")){
+        return;
+    }
     console.log(`Deleting image ${imgName}`);
     // make the request to delete the image, and also refresh the existing list after a successful request
     makePostReqOk("/api/v1/img/delete", {name: imgName}, apiGetImgList);
+}
+
+/**
+ * Callback when we want to add an image to the device
+ * This just "clicks" on the input to allow the browser to ask for the image. In part 2 we will actually process the image
+ */
+function clickAdddImg(){
+    document.getElementById('frm_fileInput').click()
+}
+
+/**
+ * 
+ */
+async function clickAddImgPart2(){
+    const fileInput = /** @type {HTMLInputElement} */ (document.getElementById('frm_fileInput'));
+    if (!fileInput.files || fileInput.files.length === 0) return;
+    const file = fileInput.files[0];
+
+    const palette = PALETTES['camera'].colors;
+    const img = await loadImage(file);
+    const scaled = createCanvas(img);
+    const dithered = ditherImage(scaled, palette);
+    const byteData = ditheredImgToBytes(dithered);
+    console.log(byteData);
 }

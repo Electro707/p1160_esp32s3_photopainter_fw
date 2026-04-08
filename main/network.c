@@ -118,9 +118,9 @@ static esp_err_t handleUriGetPmicInfo(httpd_req_t *req){
         return ESP_FAIL;
     }
     cJSON_AddStringToObject(jRoot, "stat", "ok");
-    addVoltageToJson(jRoot, "battVolt", pmicTelem.battVolt);
-    addVoltageToJson(jRoot, "sysVolt", pmicTelem.sysVolt);
-    addVoltageToJson(jRoot, "vBusVolt", pmicTelem.vBusVolt);
+    cJSON_AddNumberToObject(jRoot, "battVolt", pmicTelem.battVolt);
+    cJSON_AddNumberToObject(jRoot, "sysVolt", pmicTelem.sysVolt);
+    cJSON_AddNumberToObject(jRoot, "vBusVolt", pmicTelem.vBusVolt);
     cJSON_AddNumberToObject(jRoot, "battPercentage", pmicTelem.battPercentage);
     cJSON_AddBoolToObject(jRoot, "vBusGood", pmicTelem.vBusGood);
     cJSON_AddBoolToObject(jRoot, "battPresent", pmicTelem.battPresent);
