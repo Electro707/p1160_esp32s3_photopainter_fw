@@ -47,6 +47,8 @@ pmicTelemetry pmicTelem;
 
 // the display updater task starter/handler
 TaskHandle_t dispTask_h;
+EventGroupHandle_t dispEvents;
+StaticEventGroup_t dispEventsStaticData;
 
 TaskHandle_t pmicTelemTask_h;
 SemaphoreHandle_t pmicTelemetryMutex;
@@ -171,6 +173,9 @@ void app_main(void){
 
     memset(&pmicTelem, 0, sizeof(pmicTelem));
     pmicTelemetryMutex = xSemaphoreCreateMutex();
+
+    dispEvents = xEventGroupCreateStatic(&dispEventsStaticData);
+    configASSERT( dispEvents );
 
     // todo debug values. Have them default to something and load them from nvm
     imgPlaylist.period_ticks = configTICK_RATE_HZ * 60 * DEFAULT_SCAN_IMAGE_DUR_MIN;
@@ -317,7 +322,9 @@ void taskDispUpdate(void *args){
     ESP_ERROR_CHECK(esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, "disp", &sleepLockHandle));
     for(EVER){
         xTaskNotifyStateClear(NULL);
+        xEventGroupClearBits(dispEvents, 0x01);
         xTaskNotifyWait(ULONG_MAX, 0, NULL, portMAX_DELAY);
+        xEventGroupSetBits(dispEvents, 0x01);
         esp_pm_lock_acquire(sleepLockHandle);
 #ifdef DEBUG_DISABLE_DISPLAY_UPDATE
         ESP_LOGI(TAG, "Mock updating display");
@@ -326,9 +333,13 @@ void taskDispUpdate(void *args){
         delayMs(100);            // some boot up time, todo: instrument
         dispBoot();
         dispUpdate();
-        pmicDisableLDOs();      // after we are done, shut down the display
+        pmicDisableLDOs();      // after we are done, shut down the display for power savings
 #endif
         
         esp_pm_lock_release(sleepLockHandle);       // we-allow sleep mode
     }
+}
+
+bool isDisplayUpdating(void) {
+    return xEventGroupGetBits(dispEvents) != 0;
 }

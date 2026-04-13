@@ -124,6 +124,10 @@ void saveWifiNvmConf(void){
 
 }
 
+bool isDisplayUpdating(void){
+    return false;
+}
+
 #define BASIC_RESPONSE_CHECK() \
     jRoot = cJSON_Parse(globalHttpReq.responseDat);                 \
     TEST_ASSERT_NOT_NULL(jRoot);                                    \

@@ -1,7 +1,12 @@
 #ifndef EINK_H
 #define EINK_H
 
+#ifndef UNIT_TEST
 #include "freertos/FreeRTOS.h"
+#else
+#include "mock.h"
+#endif
+
 #include "common.h"
 
 #define DISPLAY_W   800

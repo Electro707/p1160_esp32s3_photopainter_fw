@@ -4,28 +4,46 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>P1160 Control Page</title>
+
+        <link rel="icon" href="data:,">
+
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,100..700;1,100..700&display=swap" rel="stylesheet">
         <style>
             /* https://colorany.com/color-palettes/hacking-and-technology-color-palettes/ */
             :root {
                 --background: #111;
                 --fg: #00FF00;
                 --frmBg: #1E1E1E;
-                --imgListCheckBg: #4B0082;
+                --imgListCheckBg: #000;
             }
             body {
+                font-size: 16px;
+                font-family: "Roboto Mono", monospace;
+                font-optical-sizing: auto;
+                font-weight: 400;
+                font-style: normal;
+
                 color: var(--fg);
                 background-color: var(--background);
                 padding: 0;
                 margin: 0 auto;
                 width: 90%;
                 max-width: 1200px;
-                font-size: 16px;
             }
+
             p {
                 margin: 0px 0px;
             }
 
-            .actionBt {
+            button, input {
+                font: inherit;
+                max-width: 100%;
+                box-sizing: border-box;
+            }
+
+            button, input::file-selector-button {
                 border: 1px solid var(--fg);
                 padding: 8px 16px;
                 cursor: pointer;
@@ -33,12 +51,28 @@
                 color: var(--fg);
             }
 
+            #mainView {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                justify-items: stretch;
+                align-items: stretch;
+                gap: 10px 10px;
+                padding: 10px 10px;
+            }
+            @media (max-width: 700px) {
+                #mainView {
+                    grid-template-columns: 100%;
+                }
+                body {
+                    width: 100%;
+                }
+            }
+
             .frame {
                 background-color: var(--frmBg);
                 border-width: 2px;
                 border-color: white;
                 border-style: dotted;
-                width: 90%;
                 margin: 2px 2px;
                 padding: 5px;
             }
@@ -60,36 +94,87 @@
 
             .imgList > div {
                 display: flex;
+                flex-wrap: wrap;
                 align-items: center;
                 gap: 8px;
-                padding-bottom: 5px;
+                padding-bottom: 0px;
             }
 
             .imgList > div > button {
-                border: 0px;
                 background: var(--imgListCheckBg);
                 color: var(--fg);
+                border: 1px solid white;
             }
 
-            #mainView {
-                display: grid;
-                grid-template-columns: repeat(2, 50%);
-                justify-items: center;
-                align-items: center;
-                gap: 10px;
-                padding: 10px;
+            #canvas_previewImg {
+                image-rendering: crisp-edges;
+            }
+
+            .flexColDivider {
+                width: 1px;
+                background-color: var(--fg);
+                align-self: stretch;
+            }
+
+            .imgList > div.flexRowDivider {
+                height: 2px;
+                margin-top: 10px;
+                margin-bottom: 10px;
+                padding-bottom: 0px;
+                background-color: var(--fg);
+                align-self: stretch;
             }
         </style>
     </head>
 
     <body>
         <div id="mainView">
-            <div class="label" id="ent_fwVer" style="grid-column: 1/span 2; grid-row: 1">
+            <div class="label" id="ent_fwVer" style="grid-column: 1 / -1;">
                 <span class="lb">Firmware Version: </span>
                 <span class="ent">-</span>
             </div>
 
-            <div class="frame" style="grid-column: 1; grid-row: 2">
+            <div class="frame" style="grid-column: 1 / -1;">
+                <p class="title">Operation Mode</p>
+                <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                    <div class="frame", id="frm_mode" style="flex-grow: 1;">
+                        <div class="label" id="ent_mode"></div>
+                    </div>
+                    <div class="frame", id="frm_playlist" style="flex-grow: 1; max-width: 100%; box-sizing: border-box;">
+                        <p class="title">Playlist Settings</p>
+                        <div class="label" id="ent_playlist_mode"></div>
+                        <div class="label" id="ent_playlist_dur"></div>
+                    </div>
+                </div>
+                <div>
+                    <button class="actionBt" id="bt_modeSet">Set</button>
+                </div>
+            </div>
+
+            <div class="frame", id="frm_img" style="grid-column: 1 / -1;">
+                <p class="title">Images on SD Card</p>
+                <p>"Show on Device" should only be used when in standby mode</p>
+                <div style="display: flex; flex-wrap: wrap;">
+                    <div class="frame", id="frm_imgList" style="flex-grow: 1; flex-basis: 300px;">
+                        <div id="lst_imgList" class="imgList"></div>
+                    </div>
+                    <div class="frame", id="frm_imgList" style="flex-grow: 2; flex-basis: 800px;">
+                        <p class="title">Image Preview</p>
+                        <p>Shown Image: <span id="text_shownImgPrev">-</span></p>
+                        <div style="position: relative; aspect-ratio: 5/3; width: 100%;">
+                            <canvas id="canvas_previewImg" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="frame" style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                    <input type="file" id="frm_fileInput" accept="image/*">
+                    <div class="label" id="ent_uploadImgName" style="width: fit-content; max-width: 100%;"></div>
+                    <button class="actionBt" id="bt_previewUploaded">Preview</button>
+                    <button class="actionBt" id="bt_sendImgToDev">Send to Device</button>
+                </div>
+            </div>
+
+            <div class="frame">
                 <p class="title">Current Wifi Info</p>
                 <div class="label" id="ent_wifiMode"></div>
                 <div class="label" id="ent_wifiSSID"></div>
@@ -97,7 +182,7 @@
                 <button>Set Wifi and Connect</button>
             </div>
 
-            <div class="frame" style="grid-column: 2; grid-row: 2">
+            <div class="frame">
                 <p class="title">Power Info</p>
                 <div class="label" id="ent_pmic_batV"></div>
                 <div class="label" id="ent_pmic_sysV"></div>
@@ -107,29 +192,6 @@
                 <div class="label" id="ent_pmic_battPres"></div>
                 <div class="label" id="ent_pmic_currLim"></div>
                 <span><input type="checkbox" id="chk_pmic_autoRefresh"> Auto Refresh</span>
-            </div>
-
-            <div class="frame" style="grid-column: 1; grid-row: 3; display: grid;">
-                <p class="title" style="grid-column: 1/span 2; grid-row: 1">Operation Mode</p>
-                <div class="frame", id="frm_mode" style="grid-column: 1; grid-row: 2">
-                    <div class="label" id="ent_mode"></div>
-                </div>
-                <div class="frame", id="frm_playlist" style="grid-column: 2; grid-row: 2">
-                    <p class="title">Playlist Settings</p>
-                    <div class="label" id="ent_playlist_mode"></div>
-                    <div class="label" id="ent_playlist_dur"></div>
-                </div>
-                <div style="grid-column: 1/span 2; grid-row: 3">
-                    <button class="actionBt" id="bt_mode_set">Set</button>
-                </div>
-            </div>
-
-            <div class="frame", id="frm_imgList" style="grid-column: 1/span 2; grid-row: 4">
-                <p class="title">Images on SD Card</p>
-                <div id="lst_imgList" class="imgList"></div>
-                <button class="actionBt" id="bt_img_add">Add</button>
-                <!-- Non visible input -->
-                <input type="file" id="frm_fileInput" accept="image/*" style="display: none">
             </div>
         </div>
 

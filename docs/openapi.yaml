@@ -71,6 +71,25 @@ paths:
                   - stat: "ok"
                     version: "ESP32S3 PhotoPainer Open Firmware Rev 0.1.0"
 
+  /status:
+    get:
+      summary: "Get the device status. Currently only includes if refreshing the display or not"
+      responses:
+        "200":
+          description: Information on the current device status
+          content:
+            application/json:
+              schema:
+                properties:
+                  stat:
+                    type: string
+                    const: "ok"
+                  dispBusy:
+                    type: bool
+                    description: "Is the device busy refreshing the e-ink panel"
+        "500":
+          $ref: '#/components/responses/PostErrorResponse'
+
   /coffee:
     get:
       summary: Tea Time!
@@ -423,6 +442,40 @@ paths:
       responses:
         "200":
           $ref: '#/components/responses/PostOKResponse'
+        "400":
+          $ref: '#/components/responses/PostErrorResponse'
+        "500":
+          $ref: '#/components/responses/PostErrorResponse'
+
+  /img/get:
+    get:
+      summary: "To get an image from the SD card"
+      tags:
+        - Image Management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: "The image name to send back"
+      responses:
+        "200":
+          description: "The returned image"
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+                description: |
+                  A 192000 byte payload which is the frame buffer
+                  Each byte of the frame buffer is 2 pixels. Each pixel can have the values
+                  [0, 1, 2, 3, 5, or]
         "400":
           $ref: '#/components/responses/PostErrorResponse'
         "500":

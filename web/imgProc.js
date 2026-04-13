@@ -154,7 +154,7 @@ export function ditherImage(img, palette){
 
 /**
  * 
- * @param {Uint8Array} quant 
+ * @param {Uint8Array} quant
  * @param {Array<Array<number>>} palette
  */
 export function imageFromQuantized(quant, palette){
@@ -181,17 +181,47 @@ export function imageFromQuantized(quant, palette){
 
 /**
  * Takes a quantized image (per e-ink index) and returns it packed as expected by the firmware
- * @param {Uint8Array} quant 
+ * @param {Uint8Array} quant
  * @return {Uint8Array}
  */
 export function ditheredImgToBytes(quant){
     // Pack two nibbles per byte
     const packed = new Uint8Array(Math.floor(quant.length / 2));
     for (let i = 0; i < packed.length; i++) {
-        packed[i] = quant[i*2] & 0x0F;
-        packed[i] |= (quant[(i*2) + 1] & 0x0F) << 4;
+        // on the display, MSB is pixel 0
+        packed[i] = (quant[i*2] & 0x0F) << 4;
+        packed[i] |= quant[(i*2) + 1] & 0x0F;
     }
     return packed;
+}
+
+/**
+ * 
+ * @param {Uint8Array} imgDat
+ * @param {Array<Array<number>>} palette
+ */
+export function imageFromBytes(imgDat, palette){
+    const out = document.createElement('canvas');
+    const numPixels = TARG_W * TARG_H;
+
+    out.width = TARG_W; out.height = TARG_H;
+    const outCtx = out.getContext('2d');
+    if (!outCtx) throw new Error('no ctx');
+    const outData = outCtx.createImageData(TARG_W, TARG_H);
+
+    for (let i = 0; i < numPixels; i++) {
+        let pixel = imgDat[Math.floor(i / 2)];
+        if(i % 2 === 0){pixel >>= 4};
+        pixel &= 0xF;
+        const palIdx = INDEX_TO_ENUM.indexOf(pixel);
+        const color = palette[palIdx];
+        outData.data[i * 4    ] = color[0];
+        outData.data[i * 4 + 1] = color[1];
+        outData.data[i * 4 + 2] = color[2];
+        outData.data[i * 4 + 3] = 255;
+    }
+    outCtx.putImageData(outData, 0, 0);
+    return out;
 }
 
 /**

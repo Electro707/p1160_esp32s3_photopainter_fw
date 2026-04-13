@@ -12,14 +12,13 @@ from socketserver import BaseServer
 from urllib.parse import urlparse, parse_qs
 import threading
 import urllib.request
+import urllib.error
 import json
 import os
 import random
+import argparse
 
-MODE = "sim"
-# MODE = "esp32"
-
-ESP32_IP = "http://p1160.local"
+DEFAULT_ESP32_IP = "http://p1160.local"
 
 
 class Esp32DeviceHandler(SimpleHTTPRequestHandler):
@@ -34,7 +33,7 @@ class Esp32DeviceHandler(SimpleHTTPRequestHandler):
             self.proxy_request("POST")
 
     def proxy_request(self, method):
-        esp_url = ESP32_IP + self.path
+        esp_url = SimHttpHandlerVars.esp32Url + self.path
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length) if length else None
 
@@ -46,6 +45,12 @@ class Esp32DeviceHandler(SimpleHTTPRequestHandler):
                 self.send_header("Content-Type", resp.headers.get("Content-Type", "application/json"))
                 self.end_headers()
                 self.wfile.write(data)
+        except urllib.error.HTTPError as e:
+            data = e.read()
+            self.send_response(e.code)
+            self.send_header("Content-Type", e.headers.get("Content-Type", "application/json"))
+            self.end_headers()
+            self.wfile.write(data)
         except Exception as e:
             self.send_response(404)
             self.end_headers()
@@ -53,6 +58,7 @@ class Esp32DeviceHandler(SimpleHTTPRequestHandler):
 
 class SimHttpHandlerVars:
     imgList = ["Image1.RAW", "Image2.RAW", "Image3.RAW"]
+    esp32Url = DEFAULT_ESP32_IP
 
     @classmethod
     def reset(cls):
@@ -125,10 +131,23 @@ class SimHttpHandler(SimpleHTTPRequestHandler):
 
 
 def main():
-    if MODE == 'sim':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("mode", type=str,
+                        help="The operation mode, either simulated ('sim') or directly talking to the esp32 ('esp32')")
+    parser.add_argument("-u", "--url", type=str, help="ESP32 URL if running in 'esp32' mode", default=DEFAULT_ESP32_IP)
+    args = parser.parse_args()
+
+    if not args.url.startswith("http://"):
+        args.url = "http://" + args.url
+
+    SimHttpHandlerVars.esp32Url = args.url
+
+    if args.mode == 'sim':
         reqH = SimHttpHandler
-    elif MODE == 'esp32':
+        print("Running in 'sim' mode")
+    elif args.mode == 'esp32':
         reqH = Esp32DeviceHandler
+        print(f"Running in 'esp32' proxy mode, with device url {SimHttpHandlerVars.esp32Url}")
     else:
         raise UserWarning("Invalid MODE")
     

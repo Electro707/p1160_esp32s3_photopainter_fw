@@ -69,6 +69,10 @@ def createFBFromImage(imagePath: str) -> bytes:
     for i, v in enumerate(index_to_enum):
         lut[i] = v
 
+    # \/ was used to test endianness of display
+    # quantized_image.putpixel((0, 0), 0)
+    # quantized_image.putpixel((1, 1), 0)
+
     coded = quantized_image.point(lut, mode="L")  # "L" image where each pixel is your enum value
     print(quantized_image.getpixel((400, 100)))
     print(coded.getpixel((400, 100)))
@@ -79,8 +83,9 @@ def createFBFromImage(imagePath: str) -> bytes:
     packed = bytearray((len(data) + 1) // 2)
 
     for i in range(0, len(data), 2):
-        lo = data[i] & 0x0F
-        hi = (data[i + 1] & 0x0F) << 4 if i + 1 < len(data) else 0
+        # on the display, MSB is pixel 0
+        lo = (data[i] & 0x0F) << 4
+        hi = data[i + 1] & 0x0F
         packed[i // 2] = lo | hi
 
     return packed

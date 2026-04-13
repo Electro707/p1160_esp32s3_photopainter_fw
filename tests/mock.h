@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 typedef void* httpd_handle_t;
 typedef void (*httpd_work_fn_t)(void *arg);
@@ -95,7 +96,7 @@ typedef struct{
 #define HTTPD_DEFAULT_CONFIG() { \
         .test      = 123,       \
 }
-
+#define pdMS_TO_TICKS(_X) (_X)
 #define ESP_LOGD(_TAG, __VA) printf(__VA)
 
 typedef struct httpd_uri {
@@ -106,8 +107,11 @@ typedef struct httpd_uri {
 } httpd_uri_t;
 
 typedef esp_err_t (*httpd_err_handler_func_t)(httpd_req_t *req, httpd_err_code_t error);
+typedef int TickType_t;
+typedef char FIL;
 
 extern const int displayFbMutex;
+extern const int pmicTelemetryMutex;
 
 int xSemaphoreTake(int contextN, int timeout);
 void xSemaphoreGive(int contextN);
@@ -125,6 +129,7 @@ esp_err_t httpd_queue_work(httpd_handle_t handle, httpd_work_fn_t work, void *ar
 // void wifiStartAP(void);
 void wifiStartSTA(void *arg);
 void dispTrigUpdate(void);
+bool isDisplayUpdating(void);
 // void saveWifiNvmConf(void);
 // void dispTrigUpdate(void);
 

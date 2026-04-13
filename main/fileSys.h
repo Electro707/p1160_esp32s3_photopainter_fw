@@ -4,7 +4,10 @@
 #include <cJSON.h>
 #include "common.h"
 #include "eink.h"
+
+#ifndef UNIT_TEST
 #include "ff.h"
+#endif
 
 #define IMAGE_DIR       "IMG"
 

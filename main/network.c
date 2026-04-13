@@ -97,6 +97,30 @@ static esp_err_t handleUriGetCoffee(httpd_req_t *req){
     return ESP_OK;
 }
 
+static esp_err_t handleUriGetStatus(httpd_req_t *req){
+    esp_err_t ret;
+    cJSON *jRoot;
+    char *jsonPrint;
+
+    httpd_resp_set_type(req, "application/json");
+    jRoot = cJSON_CreateObject();
+
+    cJSON_AddStringToObject(jRoot, "stat", "ok");
+    cJSON_AddBoolToObject(jRoot, "dispBusy", isDisplayUpdating());
+
+    jsonPrint = cJSON_PrintUnformatted(jRoot);
+    if(jsonPrint == NULL){
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"CJSON Fail\"}");
+        ret = ESP_FAIL;
+    } else {
+        httpd_resp_sendstr(req, jsonPrint);
+        ret = ESP_OK;
+    }
+
+    cJSON_Delete(jRoot);
+    return ret;
+}
+
 static esp_err_t addVoltageToJson(cJSON *jRoot, const char *key, float val){
     char numb[16];
     snprintf(numb, 16, "%.2f", val);
@@ -212,6 +236,59 @@ static esp_err_t handleUriGetImgAvailable(httpd_req_t *req){
     return ret;
 }
 
+static esp_err_t handleUriImgGet(httpd_req_t *req){
+    esp_err_t ret;
+    esp_err_t espStat;
+    fSysRet fSysStat;
+    char *urlQuery;
+    char imgName[32+1];
+    int urlQueryLen;
+
+    httpd_resp_set_type(req, "application/json");
+
+    urlQueryLen = httpd_req_get_url_query_len(req);
+    urlQueryLen += 1;
+    urlQuery = malloc(urlQueryLen);
+    espStat = httpd_req_get_url_query_str(req, urlQuery, urlQueryLen);
+    if(espStat){
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"bad url\"}");
+        ret = ESP_FAIL;
+        goto cleanup;
+    }
+
+    espStat = httpd_query_key_value(urlQuery, "name", imgName, 32);
+    if(espStat){
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"name was not valid\"}");
+        ret = ESP_FAIL;
+        goto cleanup;
+    }
+
+    fSysStat = fileSysLoadImage(imgName, sdCardFrameBuff, false);
+    if(fSysStat != FILE_SYS_RET_OK){
+        if(fSysStat == FILE_SYS_NO_FILE_FOUND){
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"image does not exist\"}");
+        }
+        else if(fSysStat == FILE_SYS_INVALID_FILE){
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"invalid image file\"}");
+        }
+        else{
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"error reading file\"}");
+        }
+        ret = ESP_FAIL;
+        goto cleanup;
+    }
+
+
+    httpd_resp_set_type(req, "application/octet-stream");
+    httpd_resp_send(req, (char *)sdCardFrameBuff, DISP_FB_SIZE);
+    ret = ESP_OK;
+
+cleanup:
+    free(urlQuery);
+    return ret;
+}
+
+
 static esp_err_t handleUriGetPlaylistImages(httpd_req_t *req){
     esp_err_t ret;
     cJSON *jRoot;
@@ -280,48 +357,31 @@ static esp_err_t handleUriGetWifiInfo(httpd_req_t *req){
 
 static esp_err_t handleUriPostWifiSta(httpd_req_t *req){
     esp_err_t ret;
-    char *recvBuf;
-    char responseBuff[128];
-
+    char *contextBuff;
     cJSON *jRoot = NULL;
     const cJSON *jSSID = NULL;
     const cJSON *jPass = NULL;
 
     httpd_resp_set_type(req, "application/json");
 
-    int remaining = req->content_len;   // total bytes expected
-    recvBuf = malloc(req->content_len);
-    int r = httpd_req_recv(req, (char*)recvBuf, remaining);
-    if(r < 0){
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"Error while receiving info\"}");
+    if(getJsonFromReq(req, &contextBuff, &jRoot)){
         ret = ESP_FAIL;
-        goto end;
+        goto cleanup;
     }
-    jRoot = cJSON_Parse(recvBuf);
 
-    if(jRoot == NULL){
-        const char *error_ptr = cJSON_GetErrorPtr();
-        if(error_ptr != NULL){
-            snprintf(responseBuff, 128, "{\"stat\": \"JSON invalid: %s\"}", error_ptr);
-        } else {
-            snprintf(responseBuff, 128, "{\"stat\": \"JSON invalid: unknown\"}");
-        }
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, responseBuff);
-        ret = ESP_FAIL;
-        goto end;
-    }
+
     jSSID = cJSON_GetObjectItem(jRoot, "ssid");
     if (!cJSON_IsString(jSSID) || (jSSID->valuestring == NULL)){
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"JSON invalid: ssid not a string\"}");
         ret = ESP_FAIL;
-        goto end;
+        goto cleanup;
     }
 
     jPass = cJSON_GetObjectItem(jRoot, "pass");
     if (!cJSON_IsString(jPass) || (jPass->valuestring == NULL)){
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"JSON invalid: password not a string\"}");
         ret = ESP_FAIL;
-        goto end;
+        goto cleanup;
     }
 
     strcpy(wifiNvmConf.staSsid, jSSID->valuestring);
@@ -338,9 +398,9 @@ static esp_err_t handleUriPostWifiSta(httpd_req_t *req){
     saveWifiNvmConf();
     ret = ESP_OK;
 
-end:
+cleanup:
     cJSON_Delete(jRoot);
-    free(recvBuf);
+    free(contextBuff);
     return ret;
 }
 
@@ -398,7 +458,9 @@ static esp_err_t handleUriPostSetFbCommon(httpd_req_t *req, u32 dest){
         }
     }
     
-    releaseDispFb();
+    if(dest == 0x00){
+        releaseDispFb();
+    }
     httpd_resp_sendstr(req, "{\"stat\": \"ok\"}");
 
     return ESP_OK;
@@ -1054,6 +1116,10 @@ void startHttpServer(void){
     uriMatch.uri = "/api/v1/coffee";
     httpd_register_uri_handler(server, &uriMatch);
 
+    uriMatch.handler = handleUriGetStatus;
+    uriMatch.uri = "/api/v1/status";
+    httpd_register_uri_handler(server, &uriMatch);
+
     uriMatch.handler = handleUriGetWifiInfo;
     uriMatch.uri = "/api/v1/wifi/info";
     httpd_register_uri_handler(server, &uriMatch);
@@ -1064,6 +1130,10 @@ void startHttpServer(void){
 
     uriMatch.handler = handleUriGetImgAvailable;
     uriMatch.uri = "/api/v1/img/available";
+    httpd_register_uri_handler(server, &uriMatch);
+
+    uriMatch.handler = handleUriImgGet;
+    uriMatch.uri = "/api/v1/img/get";
     httpd_register_uri_handler(server, &uriMatch);
 
     uriMatch.handler = handleUriGetMode;

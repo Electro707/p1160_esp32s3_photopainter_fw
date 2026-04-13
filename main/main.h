@@ -58,5 +58,6 @@ extern mode_e runMode;
 setModeRet_e setMode(mode_e newMode);
 
 u32 dispTrigUpdate(void);
+bool isDisplayUpdating(void);
 
 #endif

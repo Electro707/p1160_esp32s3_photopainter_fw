@@ -1,10 +1,10 @@
-import { PALETTES, loadImage, createCanvas, ditherImage, ditheredImgToBytes } from './imgProc.js';
+import { PALETTES, loadImage, createCanvas, ditherImage, ditheredImgToBytes, imageFromBytes, imageFromQuantized } from './imgProc.js';
 
 // @ts-check
 // helper to get the entry from a "frame"
 
 /** @type {number|null} */
-let pmicRefreshObj = null;      
+let pmicRefreshObj = null;
 
 const getEnt = (/** @type {string} */ id) => {
     const frm = document.getElementById(id);
@@ -32,6 +32,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     createEntryFrame('ent_pmic_battPres', "Is Battery Present?", 'label');
     createEntryFrame('ent_pmic_currLim', "Is Current Limit?", 'label');
 
+    createEntryFrame('ent_uploadImgName', "Image Name", 'input');
+
     createEntryFrame('ent_mode', "Mode", 'option',
         {options: [["standby", "Standby"], ["playlist", "Playlist"]]}
     );
@@ -39,7 +41,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         {options: [["all", "All"], ["select", "Select Some"], ["random", "Random"]]}
     );
     createEntryFrame('ent_playlist_dur', "Cycle Duration (min)", 'input');
-    
+
 
     // fetch the firmware version and put it to be processed
     apiGetVersion();
@@ -50,7 +52,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     getEnt('ent_mode').addEventListener('change', changeModeSel);
 
-    document.getElementById('bt_mode_set').onclick = clickSetMode;
+    document.getElementById('bt_modeSet').onclick = clickSetMode;
 
     document.getElementById('chk_pmic_autoRefresh').addEventListener('change', function() {
         if (this.checked) {
@@ -66,13 +68,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     });
 
-    document.getElementById('frm_fileInput').addEventListener('change', clickAddImgPart2);
-    document.getElementById('bt_img_add').onclick = clickAdddImg;
+    document.getElementById('frm_fileInput').addEventListener('change', uploadedImageForDev);
+    document.getElementById('bt_sendImgToDev').onclick = sentImageToDevice;
+    document.getElementById('bt_previewUploaded').onclick = previewUploadedImage;
 });
 
 /**
  * Creates a data frame, which contains a label plus some text
- * 
+ *
  * @param {string} frameId
  * @param {string} labelText
  * @param {'label'|'input'|'option'} entType
@@ -91,7 +94,11 @@ function createEntryFrame(frameId, labelText, entType, args = null){
             ent = `<span class="ent">-</span>`;
             break;
         case 'input':
-            ent = `<input type="text" class="ent" placeholder="-">`;
+            let inputPlaceholder = "-";
+            if(args && args['placeholder']){
+                inputPlaceholder = args['placeholder'];
+            }
+            ent = `<input type="text" class="ent" placeholder="${inputPlaceholder}">`;
             break;
         case 'option':
             if(args === null || !args['options']){
@@ -112,6 +119,48 @@ function createEntryFrame(frameId, labelText, entType, args = null){
     divElem.innerHTML = `<span class="lb">${labelText}: </span>${ent}`;
 }
 
+/**
+ *
+ * @param {Array} imgList
+ * @returns
+ */
+function createImageList(imgList){
+    const htmlList = document.getElementById("lst_imgList");
+    if(!htmlList){
+        console.error(`SD card list ID is invalid`);
+        return;
+    }
+
+    var rows = [];
+    // clear the current list, and re-update with what we got
+    imgList.forEach((/** @type {string} */ e) => {
+        const div = document.createElement('div');
+        const delBtn = document.createElement('button');
+        const showBtn = document.createElement('button');
+        const prevBtn = document.createElement('button');
+        const span = document.createElement('span');
+
+        span.textContent = e;
+        delBtn.textContent = 'DELETE';
+        delBtn.addEventListener('click', () => clickDeleteImg(e));
+        showBtn.textContent = 'Show on Device';
+        showBtn.addEventListener('click', () => clickShowImg(e));
+        prevBtn.textContent = 'Preview';
+        prevBtn.addEventListener('click', () => clickPreviewImg(e));
+
+        div.appendChild(delBtn);
+        div.appendChild(showBtn);
+        div.appendChild(prevBtn);
+        div.appendChild(span);
+        rows.push(div);
+
+        const sepDiv = document.createElement('div');
+        sepDiv.className = "flexRowDivider";
+        rows.push(sepDiv);
+    });
+    htmlList.replaceChildren(...rows);
+}
+
 function changeModeSel(){
     const selVal = getEnt('ent_mode').value;
     const showPl = (selVal === 'playlist');
@@ -125,7 +174,7 @@ function apiGetWifiInfo(){
             // todo: general error handler!
             return;
         }
-        
+
         console.log(getEnt('ent_wifiMode'));
         getEnt('ent_wifiMode').textContent = j['currentMode'];
         getEnt('ent_wifiSSID').value = j['staSSID'];
@@ -155,7 +204,7 @@ function apiGetMode(){
         changeModeSel();
         getEnt('ent_playlist_mode').value = j['playlist']['mode'];
         getEnt('ent_playlist_dur').value = j['playlist']['duration'];
-        
+
     });
 }
 
@@ -188,35 +237,13 @@ function apiGetImgList(){
             // todo: general error handler!
             return;
         }
-
-        const htmlList = document.getElementById("lst_imgList");
-        if(!htmlList){
-            console.error(`SD card list ID is invalid`);
-            return;
-        }
-        
-        var rows = [];
-        // clear the current list, and re-update with what we got
-        j['img'].forEach((/** @type {string} */ e) => {
-            const div = document.createElement('div');
-            const btn = document.createElement('button');
-            const span = document.createElement('span');
-
-            btn.textContent = 'X';
-            span.textContent = e;
-            btn.addEventListener('click', () => clickDeleteImg(e));
-
-            div.appendChild(btn);
-            div.appendChild(span);
-            rows.push(div);
-        });
-        htmlList.replaceChildren(...rows);
+        createImageList(j['img']);
     });
 }
 
 /**
  * Creates a data frame, which contains a label plus some text
- * 
+ *
  * @param {string} path
  * @param {object} dat
  * @param {function} after: An optional function to call if the request is successful.
@@ -229,7 +256,9 @@ function makePostReqOk(path, dat, after = null){
 
     f.then(async (resp) => {
         const j = await resp.json();
-        if(j['stat'] != 'ok'){
+        console.log(`Response for req ${path}`);
+        console.log(j);
+        if(j['stat'] != 'ok' || !resp.ok){
             console.error(`Request did not return ok: ${path}`)
             // todo: general error handler!
             return;
@@ -252,10 +281,76 @@ function clickSetMode(){
     makePostReqOk("/api/v1/mode", {"mode": selVal, "playlist": {"mode": playlistMode, "duration": playlistDurInt}});
 }
 
+function clickShowImg(imgName){
+    console.log(`Showing image ${imgName}`);
+
+    fetch("/api/v1/status").then(async (resp) => {
+        const j = await resp.json();
+        if(j['stat'] != 'ok' || !resp.ok){
+            console.error(`Request did not return ok: ${path}`)
+            // todo: general error handler!
+            return;
+        }
+        console.log(j);
+        if(j['dispBusy']){
+            console.error("Device is busy updating display");
+            // todo: error handler
+            return;
+        }
+
+        makePostReqOk("/api/v1/img/load", {name: imgName}, () => {
+            // after the above is a success, then update the display
+            makePostReqOk("/api/v1/disp/update");
+        });
+    });
+}
+
+/**
+ * @param {HTMLCanvasElement} src
+ * @param {HTMLCanvasElement} dest
+ */
+function copyToDisplay(src, dest) {
+    dest.width = src.width;
+    dest.height = src.height;
+    const ctx = dest.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, dest.width, dest.height);  // clear previous frame
+    ctx.save();
+
+    ctx.translate(dest.width / 2, dest.height / 2);
+    ctx.rotate(Math.PI);
+    ctx.drawImage(src, -dest.width/2, -dest.height/2, dest.width, dest.height);
+
+    ctx.restore();
+}
+
+/**
+ * If we clicked to preview an image on our browser. Fetches it from the device and draws
+ * @param {string} imgName
+ */
+function clickPreviewImg(imgName){
+    const params = new URLSearchParams();
+    params.append("name", imgName);
+
+    fetch(`api/v1/img/get?${params}`).then(async (resp) => {
+        console.log(resp);
+        const arrBuff = await resp.arrayBuffer();
+        const byteBuff = new Uint8Array(arrBuff);
+
+        const palette = PALETTES['camera'].colors;
+        const ditheredCanvas = imageFromBytes(byteBuff, palette);
+        const htmlCanvas = (document.getElementById('canvas_previewImg'));
+        copyToDisplay(ditheredCanvas, htmlCanvas);
+
+        document.getElementById('text_shownImgPrev').textContent = imgName;
+    });
+}
+
 /**
  * Callback when we clicked to delete an image
- * 
- * @param {string} imgName 
+ *
+ * @param {string} imgName
  */
 function clickDeleteImg(imgName){
     if(!confirm("Are you sure you want to delete this image?")){
@@ -266,18 +361,20 @@ function clickDeleteImg(imgName){
     makePostReqOk("/api/v1/img/delete", {name: imgName}, apiGetImgList);
 }
 
-/**
- * Callback when we want to add an image to the device
- * This just "clicks" on the input to allow the browser to ask for the image. In part 2 we will actually process the image
- */
-function clickAdddImg(){
-    document.getElementById('frm_fileInput').click()
+async function uploadedImageForDev(){
+    const fileInput = /** @type {HTMLInputElement} */ (document.getElementById('frm_fileInput'));
+    if (!fileInput.files || fileInput.files.length === 0) return;
+    const file = fileInput.files[0];
+    const nameEnt = getEnt('ent_uploadImgName');
+    if(nameEnt.value == ''){
+        nameEnt.placeholder = file.name.replace(/\.[^.]+$/, '');;
+    }
 }
 
 /**
- * 
+ * When we click to preview an uploaded image
  */
-async function clickAddImgPart2(){
+async function previewUploadedImage(){
     const fileInput = /** @type {HTMLInputElement} */ (document.getElementById('frm_fileInput'));
     if (!fileInput.files || fileInput.files.length === 0) return;
     const file = fileInput.files[0];
@@ -286,6 +383,46 @@ async function clickAddImgPart2(){
     const img = await loadImage(file);
     const scaled = createCanvas(img);
     const dithered = ditherImage(scaled, palette);
+    const ditheredCanvas = imageFromQuantized(dithered, palette);
+    const htmlCanvas = (document.getElementById('canvas_previewImg'));
+    copyToDisplay(ditheredCanvas, htmlCanvas);
+
+    document.getElementById('text_shownImgPrev').textContent = "<Uploaded Image>";
+
+}
+
+/**
+ * Clicked when we have uploaded an image to be sent to the device
+ * todo: this, need to get file name or allow to write to frame buffer directly
+ */
+async function sentImageToDevice(){
+    const fileInput = /** @type {HTMLInputElement} */ (document.getElementById('frm_fileInput'));
+    if (!fileInput.files || fileInput.files.length === 0) return;
+    const file = fileInput.files[0];
+
+    let uploadName = getEnt('ent_uploadImgName').value;
+    if(uploadName == ''){
+        uploadName = file.name.replace(/\.[^.]+$/, '');;
+    }
+
+    const palette = PALETTES['camera'].colors;
+    const img = await loadImage(file);
+    const scaled = createCanvas(img);
+    const dithered = ditherImage(scaled, palette);
     const byteData = ditheredImgToBytes(dithered);
-    console.log(byteData);
+
+
+    const reqUpload = fetch("/api/v1/img/upload", {method: "POST", body: byteData, headers: {"Content-Type": "application/octet-stream"}});
+    reqUpload.then(async (resp) => {
+        const j = await resp.json();
+        console.log(`Response for upload`);
+        console.log(j);
+        if(j['stat'] != 'ok' || !resp.ok){
+            console.error(`Request did not return ok: ${path}`)
+            // todo: general error handler!
+            return;
+        }
+        // then we save to the SD card. If that one was successful, then we reload the image list
+        makePostReqOk("/api/v1/img/save", {name: uploadName}, apiGetImgList);
+    });
 }
