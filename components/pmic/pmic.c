@@ -2,6 +2,7 @@
 #include "pmic.h"
 #include <string.h>
 #include "esp_err.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 
 #define I2C_READ_WAIT       pdMS_TO_TICKS(500)
@@ -66,6 +67,10 @@ void pmicEnableLDOs(void){
                                                     // falls to ~1v. Stupid, deal with later
 }
 
+void pmicDisableLDOsAll(void){
+    axp2101RegWrite(APX2101_REG_LDO_EN0, 0x00);
+}
+
 void pmicInit(i2c_master_bus_handle_t *masterHandle){
     // init i2c bus
     i2c_device_config_t dev_cfg;
@@ -75,8 +80,8 @@ void pmicInit(i2c_master_bus_handle_t *masterHandle){
     // proving the i2c waveform, it has a very slow risetime, to the point where 400kHz doesn't get up to vcc by the time it trips back low
     // while it does *work*, it might cause unforseen issues. something to keep in mind
     // probably why Waveshare's example had it down to 300Khz
-    dev_cfg.scl_speed_hz    = 400000;
-    // dev_cfg.scl_speed_hz    = 250000;
+    // dev_cfg.scl_speed_hz    = 400000;
+    dev_cfg.scl_speed_hz    = 250000;
     ESP_ERROR_CHECK(i2c_master_bus_add_device(*masterHandle, &dev_cfg, &i2cDevPmic));
 
     // init device
@@ -86,17 +91,20 @@ void pmicInit(i2c_master_bus_handle_t *masterHandle){
     if(wakeReg & 0x01){         // if we are in sleep mode, wake the device up
         wakeReg |= 0x02;        // wake up enable = 1
     }
-    // todo: disable NTC measurement
-    axp2101RegWrite(APX2101_REG_ADC_EN, 0xFD);              // disable TS pin ADC
+    axp2101RegWrite(APX2101_REG_ADC_EN, 0x3D);              // enable all ADCs except TS pin ADC
     axp2101RegWrite(APX2101_REG_SLEEP_WAKE, wakeReg);
     axp2101RegWrite(APX2101_REG_LEVEL_DUR, 0b110000);       // irqlevel: 2.5s, offlevel: 4s, onlevel: 120mS
     axp2101RegWrite(APX2101_REG_CHGLED_CNT, 0x00);          // disable CHGLED functionality
     axp2101RegWrite(APX2101_REG_MAIN_CHARGE_VOLT, 0b010);        // 4.1v max charge
     axp2101RegWrite(APX2101_REG_BUTTON_TERM_VOLT, 0b111);        // 3.3v termination for button
-    axp2101RegWrite(APX2101_REG_CHARGE_EN, 0b1110);         // enable guage module, button charging, main cell charging, disable watchdog
+    axp2101RegWrite(APX2101_REG_CHARGE_EN, 0b1110);         // enable gauge module, button charging, main cell charging, disable watchdog
+    axp2101RegWrite(APX2101_REG_DCDCS_CTRL, 0x01);          // only enable DC1 output
+    // set DC1 output to 3.3v
     axp2101RegWrite(APX2101_REG_DC1_VOLT, APX2101_DCDC_VOLT_3V3);
-    axp2101RegWrite(APX2101_REG_LDO_EN0, 0x04);             // disable LDOs, they will be enabled when needed
+    // disable all but audio LDO (see comment in pmicEnableLDOs())
+    axp2101RegWrite(APX2101_REG_LDO_EN0, 0x04);
     axp2101RegWrite(APX2101_REG_LDO_EN1, 0x00);
+    // set LDO output voltages (3.3v)
     axp2101RegWrite(APX2101_REG_ALDO3_VOLT, APX2101_ALDO_VOLT_3V3);
     axp2101RegWrite(APX2101_REG_ALDO4_VOLT, APX2101_ALDO_VOLT_3V3);
 }

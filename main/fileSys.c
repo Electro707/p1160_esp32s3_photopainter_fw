@@ -28,11 +28,14 @@ fSysRet mountFs(void){
     FILINFO fno;
     FRESULT fsStat;
 
+    // mounts the sd card fatfs
     fsStat = f_mount(&fs, "", 1);
     if(fsStat != FR_OK){
         ESP_LOGW(TAG, "Unable to mount fatFS file system");
         return FILE_SYS_UNABLE_MOUNT;
     }
+
+    // check if the image directory exists, and if it doesn't create it
     fsStat = f_stat(IMAGE_DIR, &fno);
     switch(fsStat){
         case FR_OK:
@@ -158,7 +161,7 @@ fSysRet fileSysLoadImage(const char* imgName, u8 *datOut, bool isNameDirect){
         }
         getImagePath(imgName, imagePath, sizeof(imagePath));
     }
-    
+
     fsStat = f_open(&file, imagePath, FA_READ);
     if(fsStat != FR_OK){
         ESP_LOGW(TAG, "Unable to open file for writing");
@@ -204,7 +207,7 @@ fSysRet fileSysLoadNextImageFromIdx(u32 imgIdx, u8 *datOut){
     if(fileCnt < imgIdx){
         return FILE_SYS_NO_FILE_FOUND;
     }
-        
+
     ret = fileSysLoadImage((const char *)fno.fname, datOut, true);
     return ret;
 }

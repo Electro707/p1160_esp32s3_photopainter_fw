@@ -36,5 +36,6 @@ void pmicGetTelemetry(pmicTelemetry *telemetry);
 
 void pmicDisableLDOs(void);
 void pmicEnableLDOs(void);
+void pmicDisableLDOsAll(void);
 
 #endif

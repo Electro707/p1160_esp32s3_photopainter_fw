@@ -55,7 +55,7 @@ void saveWifiNvmConf(void);
 esp_err_t getJsonFromReq(httpd_req_t *req, char **contextBuff, cJSON **jRoot){
     char responseBuff[128];
     esp_err_t ret = ESP_OK;
-    
+
     int remaining = req->content_len;   // total bytes expected
     *contextBuff = malloc(req->content_len);
     int r = httpd_req_recv(req, (char*)*contextBuff, remaining);
@@ -340,7 +340,7 @@ static esp_err_t handleUriGetWifiInfo(httpd_req_t *req){
     cJSON_AddStringToObject(jRoot, "currentMode", wifiModeStr);
     cJSON_AddStringToObject(jRoot, "staSSID", wifiNvmConf.staSsid);
     cJSON_AddStringToObject(jRoot, "staPass", wifiNvmConf.staPass);
-    
+
     httpd_resp_set_type(req, "application/json");
     jsonPrint = cJSON_PrintUnformatted(jRoot);
     if(jsonPrint == NULL){
@@ -394,7 +394,7 @@ static esp_err_t handleUriPostWifiSta(httpd_req_t *req){
     }
 
     httpd_resp_sendstr(req, "{\"stat\": \"ok\"}");
-    ESP_LOGD(TAG, "Got info for STA mode, saving to nvm");    
+    ESP_LOGD(TAG, "Got info for STA mode, saving to nvm");
     saveWifiNvmConf();
     ret = ESP_OK;
 
@@ -422,7 +422,7 @@ static esp_err_t handleUriPostSetFbCommon(httpd_req_t *req, u32 dest){
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"Frame buffer size invalid\"}");
         return ESP_FAIL;
     }
-    
+
     if(dest == 0x00){
         destBuff = takeDispFb(0);
         if(destBuff == NULL){
@@ -443,7 +443,7 @@ static esp_err_t handleUriPostSetFbCommon(httpd_req_t *req, u32 dest){
     int remaining = req->content_len;   // total bytes expected
     while(1){
         int to_read = remaining < chunkReadSize ? remaining : chunkReadSize;
-        
+
         int r = httpd_req_recv(req, (char*)destBuff, to_read);
         if (r > 0) {
             destBuff += r;
@@ -457,7 +457,7 @@ static esp_err_t handleUriPostSetFbCommon(httpd_req_t *req, u32 dest){
             break;
         }
     }
-    
+
     if(dest == 0x00){
         releaseDispFb();
     }
@@ -500,7 +500,7 @@ static esp_err_t handleUriPostImageCheckerPattern(httpd_req_t *req){
     cJSON *jRoot = NULL;
 
     httpd_resp_set_type(req, "application/json");
-    
+
     if(getJsonFromReq(req, &contextBuff, &jRoot)){
         ret = ESP_FAIL;
         goto cleanup;
@@ -806,7 +806,7 @@ static esp_err_t handleUriGetMode(httpd_req_t *req){
     cJSON_AddStringToObject(jPlaylist, "mode", strToFill);
     cJSON_AddNumberToObject(jPlaylist, "duration", (((float)imgPlaylist.period_ticks) / ((float)configTICK_RATE_HZ) / 60.0));
 
-    
+
     jsonPrint = cJSON_PrintUnformatted(jRoot);
     if(jsonPrint == NULL){
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"CJSON Fail\"}");
@@ -901,7 +901,7 @@ static esp_err_t handleUriSetOperationMode(httpd_req_t *req){
             goto cleanup;
         }
     }
-    
+
 
     httpd_resp_sendstr(req, "{\"stat\": \"ok\"}");
     ret = ESP_OK;
@@ -1004,6 +1004,8 @@ void wifiStartSTA(void *arg){
     wifiConfig.sta.sae_pwe_h2e = WPA3_SAE_PWE_HUNT_AND_PECK;
     wifiConfig.sta.sae_h2e_identifier[0] = '\x00';
 
+    wifiConfig.sta.listen_interval = 10;
+
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifiConfig) );
     ESP_ERROR_CHECK(esp_wifi_start());
@@ -1064,7 +1066,7 @@ void wifiInit(void){
 
     wifi_init_config_t wifiInitCfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&wifiInitCfg));
-    esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+    esp_wifi_set_ps(WIFI_PS_MAX_MODEM);
 
     esp_event_handler_instance_t instance_any_id;
     esp_event_handler_instance_t instance_got_ip;
@@ -1078,7 +1080,7 @@ void wifiInit(void){
                                                         &wifiIpEventHandler,
                                                         NULL,
                                                         &instance_got_ip));
-    
+
 
     int nvmStat = wifiLoadNvmConf();
     if(nvmStat){

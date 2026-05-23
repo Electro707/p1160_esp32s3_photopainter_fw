@@ -84,11 +84,11 @@ void dispBeginCmd(u8 cmd){
 
 void dispInit(void){
     displayFbMutex = xSemaphoreCreateMutex();
-
-    spi_device_acquire_bus(dispSpi, portMAX_DELAY);
 }
 
 void dispBoot(void){
+    spi_device_acquire_bus(dispSpi, portMAX_DELAY);
+
     memset(&spiTransactSett, 0 ,sizeof(spiTransactSett));
     spiTransactSett.flags = SPI_TRANS_USE_TXDATA;
 
@@ -173,6 +173,8 @@ void dispBoot(void){
 
     dispSendCmdOnly(0x04);  //PWR on
     dispWaitBusy();         //waiting for the electronic paper IC to release the idle signal
+
+    spi_device_release_bus(dispSpi);
 }
 
 void dispFillColor(dispColor_e color){
@@ -199,12 +201,12 @@ void dispCheckerPattern(u32 checkerSizeLog2){
             if(color > EPD_COLOR_RED) color++;
             color &= 0x0F;
             // if we are on the even pixels, shift by 4 and OR with previous color. Otherwise just set the 4-bit color
-            if((pixelIdx & 1) == 0){  
+            if((pixelIdx & 1) == 0){
                 fb[pixelIdx >> 1] = color;
             } else {
                 fb[pixelIdx >> 1] |= (color << 4);
             }
-            
+
             pixelIdx++;
         }
     }
@@ -221,6 +223,8 @@ int setFrameBuffRaw(u8 *data, u32 len, u32 offset){
 }
 
 void dispUpdate(void){
+    spi_device_acquire_bus(dispSpi, portMAX_DELAY);
+
     u8 *dat = takeDispFb(portMAX_DELAY);
     if(dat == NULL){
         return;
@@ -241,6 +245,8 @@ void dispUpdate(void){
     spiSendAndWait(0x00);
     CS_RELEASE();
     dispWaitBusy();
+
+    spi_device_release_bus(dispSpi);
 }
 
 u8* takeDispFb(TickType_t timeout){

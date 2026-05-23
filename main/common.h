@@ -33,6 +33,10 @@
 #define IO_DBG_LED1     45
 #define IO_DBG_LED2     42
 
+// GPIO levels (high or low) to turn on or off LEDs
+#define LED_LVL_OFF     1
+#define LED_LVL_ON      0
+
 ////////// Misc settings
 #define I2C_ADDR_AXP2101    0x34
 
@@ -46,6 +50,10 @@
 
 #define DEFAULT_SCAN_IMAGE_DUR_MIN      5           // min, the default duration for the image scan mode
 
+#define INITIAL_BOOT_SLEEP_DELAY        6000        // mS, how long to wait after init before enabling auto sleep mode, which won't allow
+                                                    // programming
+
+#define PMIC_TELEMETRY_ACQ_DELAY        5000        // mS, how long to wait between each measurement of PMIC stats
 ////////// Other defines
 #define EVER    ;;
 

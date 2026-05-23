@@ -27,6 +27,7 @@
 
 #include "esp_log.h"
 #include "esp_pm.h"
+#include "esp_sleep.h"
 #include "nvs_flash.h"
 #include "esp_random.h"
 
@@ -60,32 +61,28 @@ void taskDispUpdate(void *args);
 static const char *TAG = "main";
 
 void mcuInit(void){
-    // configure Dynamic Frequency Scaling (DFS) settings
-    esp_pm_config_t pm_config = {
-            .max_freq_mhz = 160,
-            .min_freq_mhz = 20,
-            .light_sleep_enable = true
-    };
-    ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
-
     // init IO
     gpio_config_t gpio_conf;
     gpio_conf.intr_type     = GPIO_INTR_DISABLE;
 
-    // init IO, display input
+    // init IO as output, display input
     gpio_conf.pull_down_en  = GPIO_PULLDOWN_DISABLE;
     gpio_conf.pull_up_en    = GPIO_PULLUP_DISABLE;
     gpio_conf.mode          = GPIO_MODE_OUTPUT;
     gpio_conf.pin_bit_mask  = ((uint64_t) 0x01 << IO_DISP_RST) | ((uint64_t) 0x01 << IO_DISP_DC) | ((uint64_t) 0x01 << IO_DISP_CS);
     ESP_ERROR_CHECK(gpio_config(&gpio_conf));
-    // init IO, debug LEDs
+    // init IO as output, debug LEDs
     gpio_conf.pin_bit_mask  = ((uint64_t) 0x01 << IO_DBG_LED1) | ((uint64_t) 0x01 << IO_DBG_LED2);
     ESP_ERROR_CHECK(gpio_config(&gpio_conf));
-    // init IO, display input
+    // init IO as input, display input
     gpio_conf.mode         = GPIO_MODE_INPUT;
     gpio_conf.pin_bit_mask = ((uint64_t) 0x01 << IO_DISP_BUSY);
     gpio_conf.pull_up_en   = GPIO_PULLUP_ENABLE;        // enable pull-up for busy, shouldn't be really needed but alas...
     ESP_ERROR_CHECK(gpio_config(&gpio_conf));
+
+    // turn LEDs off by default
+    gpio_set_level(IO_DBG_LED1, LED_LVL_OFF);
+    gpio_set_level(IO_DBG_LED2, LED_LVL_OFF);
 
     // init spi
     spi_bus_config_t buscfg = {0};
@@ -141,7 +138,7 @@ void mcuInit(void){
     // host.max_freq_khz = SDMMC_FREQ_DEFAULT;
     host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
     sdmmc_card_init(&host, &sdCard);
-    
+
     // init nvs flash, which is used for some wifi stuff
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -161,8 +158,9 @@ void app_main(void){
     mcuInit();
     pmicInit(&i2cHandle);
     dispInit();
-    stat = sdmmc_get_status(&sdCard);
 
+    // load SD card
+    stat = sdmmc_get_status(&sdCard);
     if(stat == ESP_OK){
         stat = initFs();
         mountFs();
@@ -171,6 +169,7 @@ void app_main(void){
         ESP_LOGW(TAG, "SD card status not good! %d", stat);
     }
 
+    // create FreeRTOS objects
     memset(&pmicTelem, 0, sizeof(pmicTelem));
     pmicTelemetryMutex = xSemaphoreCreateMutex();
 
@@ -195,9 +194,37 @@ void app_main(void){
 
     xTaskCreatePinnedToCore(taskPmicTelemetry, "pmicTelem", 4096, NULL, 4,
                             &pmicTelemTask_h, 0);
+
+    delayMs(INITIAL_BOOT_SLEEP_DELAY);
+    // configure Dynamic Frequency Scaling (DFS) settings
+    esp_pm_config_t pm_config = {
+            .max_freq_mhz = 160,
+            .min_freq_mhz = 40,
+            .light_sleep_enable = true
+    };
+    ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
+
+    // dev notes: adding logic to disable ES7210 doesn't make a difference
+
+    // debug, used to determine power consumption with deep sleep
+    // init i2c bus
+    // i2c_device_config_t i2cConf;
+    // i2c_master_dev_handle_t audDev;
+    // memset(&i2cConf, 0, sizeof(i2cConf));
+    // i2cConf.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+    // i2cConf.device_address  = 0x40;
+    // i2cConf.scl_speed_hz    = 250000;
+    // i2c_master_bus_add_device(i2cHandle, &i2cConf, &audDev);
+    // // const u8 toWrite2[2] = {0x01, 0xFF};
+    // // i2c_master_transmit(audDev, toWrite2, 2, pdMS_TO_TICKS(500));
+    // // const u8 toWrite1[2] = {0x00, 0b00110001};
+    // // i2c_master_transmit(audDev, toWrite1, 2, pdMS_TO_TICKS(500));
+    // pmicDisableLDOsAll();
+    // delayMs(100);
+    // esp_deep_sleep_start();
 }
 
-setModeRet_e setMode(mode_e newMode){  
+setModeRet_e setMode(mode_e newMode){
     if(newMode == MODE_IMAGE_PLAYLIST){
         // set totalImg before going into the mode
         if(fileSysGetAvailableImages(NULL, &imgPlaylist.totalImg)){
@@ -291,7 +318,7 @@ void taskTimerImagePlaylist(TimerHandle_t xTimer){
             abort();
             break;
     }
-    
+
     releaseDispFb();
     if(stat == FILE_SYS_RET_OK){
         dispTrigUpdate();
@@ -308,21 +335,23 @@ void taskPmicTelemetry(void *args){
         xSemaphoreTake(pmicTelemetryMutex, portMAX_DELAY);
         pmicGetTelemetry(&pmicTelem);
         xSemaphoreGive(pmicTelemetryMutex);
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        vTaskDelay(pdMS_TO_TICKS(PMIC_TELEMETRY_ACQ_DELAY));
     }
 }
 
 /**
  * A task that updates the display
  * This task only "runs" when the task is notified, otherwise halts
- * 
+ *
  */
 void taskDispUpdate(void *args){
     esp_pm_lock_handle_t sleepLockHandle;
     ESP_ERROR_CHECK(esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, "disp", &sleepLockHandle));
     for(EVER){
+        // clear flags before going back to waiting
         xTaskNotifyStateClear(NULL);
         xEventGroupClearBits(dispEvents, 0x01);
+        // wait for us to signal to update the display in this task
         xTaskNotifyWait(ULONG_MAX, 0, NULL, portMAX_DELAY);
         xEventGroupSetBits(dispEvents, 0x01);
         esp_pm_lock_acquire(sleepLockHandle);
@@ -335,7 +364,6 @@ void taskDispUpdate(void *args){
         dispUpdate();
         pmicDisableLDOs();      // after we are done, shut down the display for power savings
 #endif
-        
         esp_pm_lock_release(sleepLockHandle);       // we-allow sleep mode
     }
 }
