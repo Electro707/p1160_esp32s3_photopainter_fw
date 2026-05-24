@@ -927,9 +927,9 @@ cleanup:
 // copied from example file_server.c
 static esp_err_t set_content_type_from_file(httpd_req_t *req, const char *filename)
 {
-    if (IS_FILE_EXT(filename, ".HTM")) {
+    if (IS_FILE_EXT(filename, ".html")) {
         return httpd_resp_set_type(req, "text/html");
-    } else if (IS_FILE_EXT(filename, ".JS")) {
+    } else if (IS_FILE_EXT(filename, ".js")) {
         return httpd_resp_set_type(req, "text/javascript");
     } else {
         /* This is a limited set only */
@@ -945,16 +945,14 @@ static esp_err_t handleUriWebGet(httpd_req_t *req){
     esp_err_t espStat;
     esp_err_t ret;
 
-
     httpd_resp_set_type(req, "text/plain");
 
     strcpy(filepath, req->uri);
     // if we exactly get /, then rename to index
     if(strcmp(filepath, "/") == 0){
-        strcpy(filepath, "/INDEX~1.HTM");
+        strcpy(filepath, "/index.html");
     }
     // upper case everything as FatFS has it upper case
-    toUpperChar(filepath);
     ESP_LOGI(TAG, "Requested file for http '%s'", filepath);
 
     // +1 added to ignore initial slash
