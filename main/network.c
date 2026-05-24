@@ -1,5 +1,6 @@
 
 #include <string.h>
+#include <ctype.h>
 #ifndef UNIT_TEST
 #include "esp_wifi.h"
 #include "esp_event.h"
@@ -45,6 +46,13 @@ struct{
 void wifiStartAP(void);
 void wifiStartSTA(void *arg);
 void saveWifiNvmConf(void);
+
+void toUpperChar(char *s){
+    while(*s){
+        *s = toupper(*s);
+        s++;
+    }
+}
 
 /**
  * Internal helper function that receives a JSON content from the request, and parses
@@ -913,6 +921,90 @@ cleanup:
 
 }
 
+#define IS_FILE_EXT(filename, ext) \
+    (strcasecmp(&filename[strlen(filename) - sizeof(ext) + 1], ext) == 0)
+
+// copied from example file_server.c
+static esp_err_t set_content_type_from_file(httpd_req_t *req, const char *filename)
+{
+    if (IS_FILE_EXT(filename, ".HTM")) {
+        return httpd_resp_set_type(req, "text/html");
+    } else if (IS_FILE_EXT(filename, ".JS")) {
+        return httpd_resp_set_type(req, "text/javascript");
+    } else {
+        /* This is a limited set only */
+        /* For any other type always set as plain text */
+        return httpd_resp_set_type(req, "text/plain");
+    }
+}
+
+
+static esp_err_t handleUriWebGet(httpd_req_t *req){
+    char filepath[128];
+    FIL file;
+    esp_err_t espStat;
+    esp_err_t ret;
+
+
+    httpd_resp_set_type(req, "text/plain");
+
+    strcpy(filepath, req->uri);
+    // if we exactly get /, then rename to index
+    if(strcmp(filepath, "/") == 0){
+        strcpy(filepath, "/INDEX~1.HTM");
+    }
+    // upper case everything as FatFS has it upper case
+    toUpperChar(filepath);
+    ESP_LOGI(TAG, "Requested file for http '%s'", filepath);
+
+    // +1 added to ignore initial slash
+    if(fileSysGetIfWebAsset(filepath+1) != FILE_SYS_RET_OK){
+        // return 404, not found
+        httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "404 not found");
+        return ESP_FAIL;
+    }
+
+    // get that file and sent it up to the user
+    if(fileSysOpenWebAsset(filepath, &file) != FILE_SYS_RET_OK){
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "500 Unable to load file");
+        ret = ESP_FAIL;
+        goto cleanup;
+    }
+
+    uint8_t datOut[8192];
+    size_t nRead;
+    FRESULT fsStat;
+    set_content_type_from_file(req, filepath);
+    do{
+        fsStat = f_read(&file, datOut, 8192, &nRead);
+        if(fsStat != FR_OK){
+            httpd_resp_send_chunk(req, NULL, 0);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Error in fatfs when reading");
+            ret = ESP_FAIL;
+            goto cleanup;
+            break;
+        }
+        if(nRead){
+            espStat = httpd_resp_send_chunk(req, (char *)datOut, nRead);
+            if(espStat){
+                ESP_LOGW(TAG, "ERROR 0x%x", espStat);
+                httpd_resp_send_chunk(req, NULL, 0);
+                httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Unable to send file, error in send_chunk");
+                ret = ESP_FAIL;
+                goto cleanup;
+            }
+        }
+    }while(nRead);
+
+    httpd_resp_set_hdr(req, "Connection", "close");
+    httpd_resp_send_chunk(req, NULL, 0);
+    ret = ESP_OK;
+
+cleanup:
+    f_close(&file);
+    return ret;
+}
+
 static esp_err_t handle404NotFound(httpd_req_t *req, httpd_err_code_t error){
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send_err(req, error, "{\"stat\": \"Not Found\"}");
@@ -1097,8 +1189,8 @@ void wifiInit(void){
 void startHttpServer(void){
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.max_uri_handlers = HTTPD_MAX_URI_HANDLERS;
-    config.stack_size = 4096*5;
-    // config.uri_match_fn = httpd_uri_match_wildcard;
+    config.stack_size = 4096*7;
+    config.uri_match_fn = httpd_uri_match_wildcard;
 
     httpd_start(&server, &config);
 
@@ -1194,5 +1286,11 @@ void startHttpServer(void){
 
     uriMatch.handler = handleUriSetOperationMode;
     uriMatch.uri = "/api/v1/mode";
+    httpd_register_uri_handler(server, &uriMatch);
+
+    // last but not least, handle matching any generic web requests
+    uriMatch.method = HTTP_GET;
+    uriMatch.handler = handleUriWebGet;
+    uriMatch.uri = "/*";
     httpd_register_uri_handler(server, &uriMatch);
 }

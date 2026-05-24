@@ -19,6 +19,10 @@ static void getImagePath(const char *imgName, char *outName, u32 maxLen){
     snprintf(outName, maxLen, IMAGE_DIR "/%s.RAW", imgName);
 }
 
+static void getWebPath(const char *imgName, char *outName, u32 maxLen){
+    snprintf(outName, maxLen, WEB_DIR "%s", imgName);
+}
+
 fSysRet initFs(void){
     ff_diskio_register_sdmmc(0, &sdCard);
     return FILE_SYS_RET_OK;
@@ -59,6 +63,55 @@ int deInitFs(void){
     return fsStat;
 }
 
+fSysRet fileSysGetIfWebAsset(const char *fileName){
+    FRESULT fsStat;
+    FF_DIR httpDir;
+    FILINFO fno;
+    fSysRet stat;
+
+    fsStat = f_opendir(&httpDir, WEB_DIR);
+    if(fsStat != FR_OK){
+        ESP_LOGW(TAG, "Unable to open image directory, even though one should have been made");
+        return FILE_SYS_INVALID_DIR;
+    }
+
+    stat = FILE_SYS_INVALID_FILE;
+    for (;;) {
+        fsStat = f_readdir(&httpDir, &fno);
+        if (fno.fname[0] == 0) break;               // break if no more files are fount
+        if (fno.fattrib & AM_DIR) {
+            // skip directories for now, a flag structure
+            // todo: maybe allow recursive HTTP...not needed though....
+            continue;
+        } else {
+            ESP_LOGI(TAG, "%s", fno.fname);
+            if(strcmp(fileName, fno.fname) == 0){
+                stat = FILE_SYS_RET_OK;
+                break;
+            }
+        }
+    }
+    f_closedir(&httpDir);
+
+    return stat;
+}
+
+fSysRet fileSysOpenWebAsset(const char *fileName, FIL *file){
+    FRESULT fsStat;
+    FF_DIR httpDir;
+    FILINFO fno;
+    char webFullPath[128];
+
+    getWebPath(fileName, webFullPath, sizeof(webFullPath));
+    fsStat = f_open(file, webFullPath, FA_READ);
+    if(fsStat != FR_OK){
+        ESP_LOGW(TAG, "Unable to open file '%s' for reading - %d", webFullPath, fsStat);
+        return FILE_SYS_UNABLE_OPEN;
+    }
+
+    return FILE_SYS_RET_OK;
+}
+
 fSysRet fileSysGetAvailableImages(cJSON *jsonArr, u32 *count){
     FRESULT fsStat;
     FF_DIR imageDir;
@@ -70,7 +123,7 @@ fSysRet fileSysGetAvailableImages(cJSON *jsonArr, u32 *count){
     fsStat = f_opendir(&imageDir, IMAGE_DIR);
     if(fsStat != FR_OK){
         ESP_LOGW(TAG, "Unable to open image directory, even though one should have been made");
-        return FILE_SYS_NO_IMG_DIR;
+        return FILE_SYS_INVALID_DIR;
     }
 
     for (;;) {
@@ -136,7 +189,7 @@ fSysRet fileSysOpenImage(const char *imgName, FIL *file){
     getImagePath(imgName, imagePath, sizeof(imagePath));
     fsStat = f_open(file, imagePath, FA_READ);
     if(fsStat != FR_OK){
-        ESP_LOGW(TAG, "Unable to open file for writing");
+        ESP_LOGW(TAG, "Unable to open file for reading");
         return FILE_SYS_UNABLE_OPEN;
     }
 
@@ -187,7 +240,7 @@ fSysRet fileSysLoadNextImageFromIdx(u32 imgIdx, u8 *datOut){
     fsStat = f_opendir(&imageDir, IMAGE_DIR);
     if(fsStat != FR_OK){
         ESP_LOGW(TAG, "Unable to open image directory, even though one should have been made");
-        return FILE_SYS_NO_IMG_DIR;
+        return FILE_SYS_INVALID_DIR;
     }
     while(1){   // todo: timeout
         fsStat = f_readdir(&imageDir, &fno);

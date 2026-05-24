@@ -1,5 +1,11 @@
 menu "Main Application Config"
 
+    config ESP_MAXIMUM_RETRY
+        int "WiFi Station Maximum retry"
+        default 5
+        help
+            Set the Maximum retry to avoid station reconnecting to the AP unlimited when the AP is really inexistent.
+
     config ESP_AP_WIFI_SSID
         string "WiFi AP SSID"
         default "p1060_wifi"
@@ -12,25 +18,25 @@ menu "Main Application Config"
         help
             WiFi password to set if unable to connect to saved wifi network
 
-    config ESP_MAXIMUM_RETRY
-        int "WiFi AP Maximum retry"
-        default 5
-        help
-            Set the Maximum retry to avoid station reconnecting to the AP unlimited when the AP is really inexistent.
-    
     config ESP_AP_WIFI_CH
         int "WiFi AP Channel Number"
         range 1 13
         default 1
-    
+
     config ESP_AP_WIFI_MAX_CONN
         int "WiFi AP Max in connection"
         default 2
-    
+
     config ESP_HOSTNAME
         string "The WiFi hostname"
         default "p1160"
         help
             The hostname sent to the router. Can use used to find the device on the network
+
+    config APP_ENABLE_LIGHT_SLEEP
+        bool "Enable light sleep"
+        default y
+        help
+            Whether to enable light sleep
 
 endmenu

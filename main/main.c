@@ -61,6 +61,18 @@ void taskDispUpdate(void *args);
 static const char *TAG = "main";
 
 void mcuInit(void){
+    // configure Dynamic Frequency Scaling (DFS) settings
+    esp_pm_config_t pm_config = {
+            .max_freq_mhz = 160,
+            .min_freq_mhz = 40,
+#ifdef CONFIG_APP_ENABLE_LIGHT_SLEEP
+            .light_sleep_enable = true
+#else
+            .light_sleep_enable = false
+#endif
+    };
+    ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
+
     // init IO
     gpio_config_t gpio_conf;
     gpio_conf.intr_type     = GPIO_INTR_DISABLE;
@@ -166,8 +178,13 @@ void app_main(void){
         mountFs();
         // todo: do something with return value?
     } else {
+        // todo: handle hot plug?
         ESP_LOGW(TAG, "SD card status not good! %d", stat);
     }
+
+    // setup WiFi and http server
+    wifiInit();
+    startHttpServer();
 
     // create FreeRTOS objects
     memset(&pmicTelem, 0, sizeof(pmicTelem));
@@ -176,7 +193,7 @@ void app_main(void){
     dispEvents = xEventGroupCreateStatic(&dispEventsStaticData);
     configASSERT( dispEvents );
 
-    // todo debug values. Have them default to something and load them from nvm
+    // todo: load these configs from NVM
     imgPlaylist.period_ticks = configTICK_RATE_HZ * 60 * DEFAULT_SCAN_IMAGE_DUR_MIN;
     imgPlaylist.mode = PLAYLIST_MODE_RANDOM;
     runMode = MODE_STANDBY;
@@ -184,10 +201,6 @@ void app_main(void){
     // create the image playlist timer
     imgPlaylist.timerHandler = xTimerCreate("playlist", imgPlaylist.period_ticks, pdTRUE, ( void * )0, taskTimerImagePlaylist);
 
-    wifiInit();
-    startHttpServer();
-
-    printf("Done with init\n");
 
     xTaskCreatePinnedToCore(taskDispUpdate, "display", 4096, NULL, 4,
                             &dispTask_h, 0);
@@ -195,18 +208,12 @@ void app_main(void){
     xTaskCreatePinnedToCore(taskPmicTelemetry, "pmicTelem", 4096, NULL, 4,
                             &pmicTelemTask_h, 0);
 
-    delayMs(INITIAL_BOOT_SLEEP_DELAY);
-    // configure Dynamic Frequency Scaling (DFS) settings
-    esp_pm_config_t pm_config = {
-            .max_freq_mhz = 160,
-            .min_freq_mhz = 40,
-            .light_sleep_enable = true
-    };
-    ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
+    printf("Done with init\n");
+
 
     // dev notes: adding logic to disable ES7210 doesn't make a difference
-
-    // debug, used to determine power consumption with deep sleep
+    // debug, used to determine power consumption with deep sleep and what can be done to save on power
+    // delayMs(INITIAL_BOOT_SLEEP_DELAY);
     // init i2c bus
     // i2c_device_config_t i2cConf;
     // i2c_master_dev_handle_t audDev;
