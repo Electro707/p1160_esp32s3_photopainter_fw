@@ -33,6 +33,8 @@
 #define IO_DBG_LED1     45
 #define IO_DBG_LED2     42
 
+#define IO_BUTTON       4
+
 // GPIO levels (high or low) to turn on or off LEDs
 #define LED_LVL_OFF     1
 #define LED_LVL_ON      0
@@ -50,8 +52,10 @@
 
 #define DEFAULT_SCAN_IMAGE_DUR_MIN      5           // min, the default duration for the image scan mode
 
-#define INITIAL_BOOT_SLEEP_DELAY        6000        // mS, how long to wait after init before enabling auto sleep mode, which won't allow
-                                                    // programming
+#define INITIAL_BOOT_SLEEP_DELAY        10000       // mS, how long to wait after init before executing the
+                                                    // rest of the firmware. This is used to allow programming if we screw
+                                                    // up sleep or other runtime settings in the firmware, and to allow
+                                                    // reconnection of the serial port in deep sleep debugging
 
 #define PMIC_TELEMETRY_ACQ_DELAY        5000        // mS, how long to wait between each measurement of PMIC stats
 ////////// Other defines
@@ -63,5 +67,7 @@ typedef uint32_t u32;
 
 ////////// macros
 #define delayMs(_X)     vTaskDelay(_X / portTICK_PERIOD_MS)
+
+#define GOOD_NIGHT()    esp_deep_sleep_start();
 
 #endif

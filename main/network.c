@@ -789,13 +789,16 @@ static esp_err_t handleUriGetMode(httpd_req_t *req){
         case MODE_IMAGE_PLAYLIST:
             strToFill = "playlist";
             break;
+        case MODE_IMAGE_PLAYLIST_LP:
+            strToFill = "playlistLP";
+            break;
         default:
             strToFill = "error";
             break;
     }
     cJSON_AddStringToObject(jRoot, "mode", strToFill);
 
-    const cJSON *jPlaylist = cJSON_AddObjectToObject(jRoot, "playlist");
+    cJSON * const jPlaylist = cJSON_AddObjectToObject(jRoot, "playlist");
     cJSON_AddStringToObject(jRoot, "stat", "ok");
     switch(imgPlaylist.mode){
         case PLAYLIST_MODE_SELECT:
@@ -892,6 +895,19 @@ static esp_err_t handleUriSetOperationMode(httpd_req_t *req){
         }
         else if(strcmp(jObj->valuestring, "playlist") == 0){
             setModeRet_e stat = setMode(MODE_IMAGE_PLAYLIST);
+            if(stat){
+                if(stat == RET_SET_MODE_IMG_PL_NONE_SET){
+                    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"no images selected for playlist mode\"}");
+                }
+                else{
+                    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "{\"stat\": \"internal error\"}");
+                }
+                ret = ESP_FAIL;
+                goto cleanup;
+            }
+        }
+        else if(strcmp(jObj->valuestring, "playlistLP") == 0){
+            setModeRet_e stat = setMode(MODE_IMAGE_PLAYLIST_LP);
             if(stat){
                 if(stat == RET_SET_MODE_IMG_PL_NONE_SET){
                     httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "{\"stat\": \"no images selected for playlist mode\"}");

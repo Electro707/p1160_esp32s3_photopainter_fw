@@ -1,9 +1,9 @@
 {
   "C_Cpp.intelliSenseEngine": "default",
-  "idf.port": "/dev/ttyACM1",
+  "idf.port": "/dev/ttyACM0",
   "idf.openOcdConfigs": [
     "board/esp32s3-builtin.cfg"
   ],
-  "idf.flashType": "JTAG",
-  "idf.currentSetup": "/home/electro/esp/esp-idf"
+  "idf.flashType": "DFU",
+  "idf.currentSetup": "/home/electro/esp/esp-idf-v5.5.5"
 }

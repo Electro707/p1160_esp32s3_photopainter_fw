@@ -58,13 +58,13 @@ void pmicGetTelemetry(pmicTelemetry *telemetry){
 #undef MACRO_GET_VOLT_FROM_REG
 
 void pmicDisableLDOs(void){
-    axp2101RegWrite(APX2101_REG_LDO_EN0, 0x04);
+    axp2101RegWrite(APX2101_REG_LDO_EN0, 0x04);     // disable all LDOs except for e-ink one
+                                                    // note: without enabling the audio LDO, the system crashes and the I2C bus (what I probed use far)
+                                                    // falls to ~1v. Stupid, deal with later
 }
 
 void pmicEnableLDOs(void){
-    axp2101RegWrite(APX2101_REG_LDO_EN0, 0x0C);       // disable all LDOs except for e-ink one
-                                                    // note: without enabling the audio LDO, the system crashes and the I2C bus (what I probed use far)
-                                                    // falls to ~1v. Stupid, deal with later
+    axp2101RegWrite(APX2101_REG_LDO_EN0, 0x0C);
 }
 
 void pmicDisableLDOsAll(void){

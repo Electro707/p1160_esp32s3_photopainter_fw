@@ -1,5 +1,5 @@
 idf_component_register(SRCS "fileSys.c" "network.c" "eink.c" "main.c" "network.c"
-                       PRIV_REQUIRES 
+                       PRIV_REQUIRES
                             spi_flash
                             esp_driver_gpio
                             esp_driver_spi

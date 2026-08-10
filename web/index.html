@@ -59,6 +59,7 @@
                 gap: 10px 10px;
                 padding: 10px 10px;
             }
+
             @media (max-width: 700px) {
                 #mainView {
                     grid-template-columns: 100%;
@@ -88,10 +89,22 @@
                 font-weight: 600;
             }
 
-            .imgList {
-
+            textArea {
+                background-color: black;
+                color: var(--fg);
+                margin: 0px 0px;
+                padding: 10px;
+                box-sizing: border-box;
+                width: 100%;
+                height: 10em;
+                resize: none;
+                border-width: 2px;
+                border-color: white;
+                border-style: dotted;
+                user-select: none;
             }
 
+            /* For the list of available images */
             .imgList > div {
                 display: flex;
                 flex-wrap: wrap;
@@ -106,21 +119,21 @@
                 border: 1px solid white;
             }
 
+            .imgList > div.flexRowDivider {
+                height: 2px;
+                margin-top: 10px;
+                margin-bottom: 10px;
+                padding-bottom: 0px;
+                background-color: var(--fg);
+                align-self: stretch;
+            }
+
             #canvas_previewImg {
                 image-rendering: crisp-edges;
             }
 
             .flexColDivider {
                 width: 1px;
-                background-color: var(--fg);
-                align-self: stretch;
-            }
-
-            .imgList > div.flexRowDivider {
-                height: 2px;
-                margin-top: 10px;
-                margin-bottom: 10px;
-                padding-bottom: 0px;
                 background-color: var(--fg);
                 align-self: stretch;
             }
@@ -151,14 +164,14 @@
                 </div>
             </div>
 
-            <div class="frame", id="frm_img" style="grid-column: 1 / -1;">
+            <div class="frame" style="grid-column: 1 / -1;">
                 <p class="title">Images on SD Card</p>
                 <p>"Show on Device" should only be used when in standby mode</p>
                 <div style="display: flex; flex-wrap: wrap;">
-                    <div class="frame", id="frm_imgList" style="flex-grow: 1; flex-basis: 300px;">
+                    <div class="frame", style="flex-grow: 1; flex-basis: 300px;">
                         <div id="lst_imgList" class="imgList"></div>
                     </div>
-                    <div class="frame", id="frm_imgList" style="flex-grow: 2; flex-basis: 800px;">
+                    <div class="frame", style="flex-grow: 2; flex-basis: 800px;">
                         <p class="title">Image Preview</p>
                         <p>Shown Image: <span id="text_shownImgPrev">-</span></p>
                         <div style="position: relative; aspect-ratio: 5/3; width: 100%;">
@@ -192,6 +205,11 @@
                 <div class="label" id="ent_pmic_battPres"></div>
                 <div class="label" id="ent_pmic_currLim"></div>
                 <span><input type="checkbox" id="chk_pmic_autoRefresh"> Auto Refresh</span>
+            </div>
+
+            <div class="frame" style="grid-column: 1 / -1;">
+                <p class="title">Debug Logs</p>
+                <textarea id="debugLogs" readonly wrap="soft" spellcheck="off"></textarea>
             </div>
         </div>
 

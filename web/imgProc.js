@@ -1,6 +1,6 @@
 /**
  * Image processor file. Handles taking an image and creating a dithered output for the display
- * 
+ *
  * Partially/Mostly ClaudeAI Generated with human oversight.
  */
 // @ts-check
@@ -35,9 +35,9 @@ export const PALETTES = {
 const INDEX_TO_ENUM = [0, 1, 2, 3, 5, 6];
 
 /**
- * 
+ *
  * Takes an image file and builds a canvas out of it
- * @param {HTMLImageElement} img 
+ * @param {HTMLImageElement} img
  * @returns {HTMLCanvasElement}
  */
 export function createCanvas(img){
@@ -94,7 +94,7 @@ export function createCanvas(img){
 }
 /**
  * Takes a canvas and dithers it, returning an int array
- * 
+ *
  * @param {HTMLCanvasElement} img
  * @param {Array<Array<number>>} palette
  * @return {Uint8Array}
@@ -153,7 +153,7 @@ export function ditherImage(img, palette){
 }
 
 /**
- * 
+ *
  * @param {Uint8Array} quant
  * @param {Array<Array<number>>} palette
  */
@@ -196,7 +196,7 @@ export function ditheredImgToBytes(quant){
 }
 
 /**
- * 
+ *
  * @param {Uint8Array} imgDat
  * @param {Array<Array<number>>} palette
  */

@@ -1,6 +1,8 @@
 ## IDF Component Manager Manifest File
+targets:
+  - esp32s3
 dependencies:
   ## Required IDF version
-  idf: =5.5.3
-  espressif/cjson: =1.7.19~1
-  espressif/mdns: '*'
+  idf: "=5.5.*"
+  espressif/cjson: "=1.7.19~1"
+  espressif/mdns: "*"

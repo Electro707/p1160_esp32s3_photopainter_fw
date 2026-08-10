@@ -17,8 +17,8 @@ const boolToShownStr = (/** @type {boolean} */ b) => {
     return b ? "Yes" : "No";
 };
 
-// after page is loaded, get some info from the ESP32
-// todo: have this be called after
+
+// setup the webpage after DOM is loaded
 document.addEventListener("DOMContentLoaded", async () => {
     createEntryFrame('ent_wifiMode', "Current Wifi Mode", 'label');
     createEntryFrame('ent_wifiSSID', "SSID", 'input');
@@ -35,7 +35,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     createEntryFrame('ent_uploadImgName', "Image Name", 'input');
 
     createEntryFrame('ent_mode', "Mode", 'option',
-        {options: [["standby", "Standby"], ["playlist", "Playlist"]]}
+        {options: [["standby", "Standby"], ["playlist", "Playlist"], ["playlistLP", "Playlist LowPower"]]}
     );
     createEntryFrame('ent_playlist_mode', "Playlist Mode", 'option',
         {options: [["all", "All"], ["select", "Select Some"], ["random", "Random"]]}
@@ -53,6 +53,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     getEnt('ent_mode').addEventListener('change', changeModeSel);
 
     document.getElementById('bt_modeSet').onclick = clickSetMode;
+
+    document.getElementById('debugLogs').value = "TODO THIS";
 
     document.getElementById('chk_pmic_autoRefresh').addEventListener('change', function() {
         if (this.checked) {
@@ -163,7 +165,7 @@ function createImageList(imgList){
 
 function changeModeSel(){
     const selVal = getEnt('ent_mode').value;
-    const showPl = (selVal === 'playlist');
+    const showPl = ['playlist', 'playlistLP'].includes(selVal);
     document.getElementById('frm_playlist').getElementsByClassName("title")[0].style.textDecoration = showPl ? 'none' : 'line-through';
 }
 
@@ -273,7 +275,7 @@ function clickSetMode(){
     const selVal = getEnt('ent_mode').value;
     const playlistMode = getEnt('ent_playlist_mode').value;
     const playlistDur = getEnt('ent_playlist_dur').value;
-    const playlistDurInt = parseInt(playlistDur);
+    const playlistDurInt = parseFloat(playlistDur);
     if(selVal == ""){
         console.log("Selected value is -, cannot make request");
         return;

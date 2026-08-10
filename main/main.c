@@ -10,6 +10,7 @@
 #include "sdkconfig.h"
 
 #include "driver/gpio.h"
+#include "driver/rtc_io.h"
 #include "driver/spi_master.h"
 #include "driver/i2c_master.h"
 #include "driver/sdmmc_host.h"
@@ -37,8 +38,9 @@
 #include "network.h"
 #include "fileSys.h"
 
-imgPlaylist_t imgPlaylist = { 0 };
-mode_e runMode;
+// configure as part of RTC NOINIT RAM due to deep sleep
+RTC_NOINIT_ATTR imgPlaylist_t imgPlaylist = { 0 };
+RTC_NOINIT_ATTR mode_e runMode;
 
 spi_device_handle_t dispSpi;        // global spi device
 i2c_master_bus_handle_t i2cHandle;
@@ -49,6 +51,9 @@ pmicTelemetry pmicTelem;
 // the display updater task starter/handler
 TaskHandle_t dispTask_h;
 EventGroupHandle_t dispEvents;
+enum{
+    RTOS_DISP_EVENT_COMPLETE = 0x01,    // set when we finish updating the display, cleared when we are using the display
+};
 StaticEventGroup_t dispEventsStaticData;
 
 TaskHandle_t pmicTelemTask_h;
@@ -57,6 +62,7 @@ SemaphoreHandle_t pmicTelemetryMutex;
 void taskTimerImagePlaylist(TimerHandle_t xTimer);
 void taskPmicTelemetry(void *args);
 void taskDispUpdate(void *args);
+int imagePlaylistLoad(void);
 
 static const char *TAG = "main";
 
@@ -182,6 +188,42 @@ void app_main(void){
         ESP_LOGW(TAG, "SD card status not good! %d", stat);
     }
 
+    delayMs(INITIAL_BOOT_SLEEP_DELAY);      // debug, remove when firmware is tested
+
+    // at this point we check if we were in "low power cycle" mode, or if
+    // in low power cycle mode, check wake source. If timer, put on next image and exit.
+    // if from button, revert mode to standby
+    esp_sleep_wakeup_cause_t wakeSource = esp_sleep_get_wakeup_cause();
+    ESP_LOGI(TAG, "sleep source: %d", wakeSource);
+    if(wakeSource == ESP_SLEEP_WAKEUP_TIMER){
+        if(runMode == MODE_IMAGE_PLAYLIST_LP){
+            ESP_LOGI(TAG, "Booted up from low power while we have a playlist, load the next image and go back to sleep");
+            // put the next image up and bail instantly!
+            imagePlaylistLoad();
+
+            pmicEnableLDOs();
+            delayMs(100);            // some boot up time, todo: instrument
+            dispBoot();
+            dispUpdate();
+
+            goDeepSleep();
+        }
+    }
+    else if(wakeSource == ESP_SLEEP_WAKEUP_EXT1){
+        // if we manually woke the thing up, assume standby mode so we can connect to it over WiFi and other stuff
+        // todo: is it better to assume MODE_IMAGE_PLAYLIST instead? So we can keep the picture frame while
+        //       allowing WiFi connectivity?
+        ESP_LOGI(TAG, "Manually woke up device with EXT0, switching to standby mode");
+        runMode = MODE_STANDBY;
+    }
+    else{
+        runMode = MODE_STANDBY;
+    }
+
+    // todo: load these configs from NVM
+    imgPlaylist.period_ticks = configTICK_RATE_HZ * 60 * DEFAULT_SCAN_IMAGE_DUR_MIN;
+    imgPlaylist.mode = PLAYLIST_MODE_RANDOM;
+
     // setup WiFi and http server
     wifiInit();
     startHttpServer();
@@ -193,14 +235,8 @@ void app_main(void){
     dispEvents = xEventGroupCreateStatic(&dispEventsStaticData);
     configASSERT( dispEvents );
 
-    // todo: load these configs from NVM
-    imgPlaylist.period_ticks = configTICK_RATE_HZ * 60 * DEFAULT_SCAN_IMAGE_DUR_MIN;
-    imgPlaylist.mode = PLAYLIST_MODE_RANDOM;
-    runMode = MODE_STANDBY;
-
-    // create the image playlist timer
+    // create FreeRTOS tasks and timers
     imgPlaylist.timerHandler = xTimerCreate("playlist", imgPlaylist.period_ticks, pdTRUE, ( void * )0, taskTimerImagePlaylist);
-
 
     xTaskCreatePinnedToCore(taskDispUpdate, "display", 4096, NULL, 4,
                             &dispTask_h, 0);
@@ -209,7 +245,6 @@ void app_main(void){
                             &pmicTelemTask_h, 0);
 
     printf("Done with init\n");
-
 
     // dev notes: adding logic to disable ES7210 doesn't make a difference
     // debug, used to determine power consumption with deep sleep and what can be done to save on power
@@ -231,8 +266,47 @@ void app_main(void){
     // esp_deep_sleep_start();
 }
 
+void goDeepSleep(void){
+    uint32_t n;
+
+    ESP_LOGI(TAG, "Commanded to go to deep sleep");
+    if(runMode == MODE_IMAGE_PLAYLIST_LP){
+        // enable timer
+        // todo: limit check
+        ESP_LOGI(TAG, "Setting timer to %d mS", imgPlaylist.period_ticks);      // debug
+        esp_sleep_enable_timer_wakeup((uint64_t)imgPlaylist.period_ticks * 1000 * 1000 / configTICK_RATE_HZ);
+        // todo: setup RTC memory to store the last state
+    }
+    // always enable the boot button as a valid wakeup source
+    // we must use EXT1 as the button is a pulldown, while EXT0 only supports when the IO goes high
+    rtc_gpio_pullup_en(IO_BUTTON);
+    rtc_gpio_pulldown_dis(IO_BUTTON);
+    rtc_gpio_hold_en(IO_BUTTON);
+    esp_sleep_enable_ext1_wakeup((1 << IO_BUTTON), ESP_EXT1_WAKEUP_ANY_LOW);
+
+    // keep RTC enabled due to SRAM used
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+
+    // disable all LDOs and wait for I2C to finish operations
+    // todo: shutdown PMIC monitor task
+    // pmicDisableLDOsAll();
+    i2c_master_bus_wait_all_done(i2cHandle, 100);
+
+    // wait for display handler to finish
+    // ESP_LOGI(TAG, "Waiting for display to finish updating before going to low power mode");
+    // waitForDisplay(portMAX_DELAY);
+
+    ESP_LOGI(TAG, "Good night");
+    GOOD_NIGHT();
+}
+
+void lowPowerDisplayUpdate(void){
+    // this is called when the display is to be updated due to a low power image cycle
+    // just load the next image and bail
+}
+
 setModeRet_e setMode(mode_e newMode){
-    if(newMode == MODE_IMAGE_PLAYLIST){
+    if(newMode == MODE_IMAGE_PLAYLIST || newMode == MODE_IMAGE_PLAYLIST_LP){
         // set totalImg before going into the mode
         if(fileSysGetAvailableImages(NULL, &imgPlaylist.totalImg)){
             return RET_SET_MODE_ERR;
@@ -263,7 +337,7 @@ setModeRet_e setMode(mode_e newMode){
     return RET_SET_MODE_OK;
 }
 
-u32 dispTrigUpdate(void){
+int dispTrigUpdate(void){
     u32 prevVal;
     xTaskNotifyAndQuery(dispTask_h, 0, eIncrement, &prevVal);
     if(prevVal != 0){
@@ -274,13 +348,28 @@ u32 dispTrigUpdate(void){
 
 #define s imgPlaylist      // nice macro as I don't feel like calling the long struct name for the function below
 void taskTimerImagePlaylist(TimerHandle_t xTimer){
+    u32 stat;
+
+    ESP_LOGI(TAG, "Playlist timer triggered, loading next image");
+    stat = imagePlaylistLoad();
+    if(stat){
+        ESP_LOGW(TAG, "Failed to load image playlist, stat=%d", stat);
+        return;
+    }
+    stat = dispTrigUpdate();
+    if(stat){
+        ESP_LOGW(TAG, "This was already updating the display");
+    }
+}
+
+int imagePlaylistLoad(void){
     fSysRet stat;
     u32 n;
 
     u8 *destBuff = takeDispFb(pdTICKS_TO_MS(100));
     if(destBuff == NULL){
         ESP_LOGE(TAG, "Unable to take ownership of frame buffer");
-        return;
+        return -1;
     }
 
     // todo: should fileSysGetAvailableImages be called here? if an image is added AFTER the mode is started, they are not
@@ -327,10 +416,14 @@ void taskTimerImagePlaylist(TimerHandle_t xTimer){
     }
 
     releaseDispFb();
-    if(stat == FILE_SYS_RET_OK){
-        dispTrigUpdate();
+
+    if(stat != FILE_SYS_RET_OK){
+        return -2;
     }
+
+    return 0;
 }
+
 #undef s
 
 /**
@@ -357,10 +450,11 @@ void taskDispUpdate(void *args){
     for(EVER){
         // clear flags before going back to waiting
         xTaskNotifyStateClear(NULL);
-        xEventGroupClearBits(dispEvents, 0x01);
+        xEventGroupSetBits(dispEvents, RTOS_DISP_EVENT_COMPLETE);
         // wait for us to signal to update the display in this task
         xTaskNotifyWait(ULONG_MAX, 0, NULL, portMAX_DELAY);
-        xEventGroupSetBits(dispEvents, 0x01);
+        xEventGroupClearBits(dispEvents, RTOS_DISP_EVENT_COMPLETE);
+
         esp_pm_lock_acquire(sleepLockHandle);
 #ifdef DEBUG_DISABLE_DISPLAY_UPDATE
         ESP_LOGI(TAG, "Mock updating display");
@@ -369,12 +463,24 @@ void taskDispUpdate(void *args){
         delayMs(100);            // some boot up time, todo: instrument
         dispBoot();
         dispUpdate();
+        // debug
+        // todo: is this the best place to put the device to deep sleep?
+        if(runMode == MODE_IMAGE_PLAYLIST_LP){
+            goDeepSleep();
+            return;
+        }
         pmicDisableLDOs();      // after we are done, shut down the display for power savings
 #endif
         esp_pm_lock_release(sleepLockHandle);       // we-allow sleep mode
     }
 }
 
-bool isDisplayUpdating(void) {
-    return xEventGroupGetBits(dispEvents) != 0;
+// waits for the display to finish updating
+void waitForDisplay(TickType_t timeout){
+    xEventGroupWaitBits(dispEvents, RTOS_DISP_EVENT_COMPLETE, pdFALSE, pdTRUE, timeout);
+}
+
+// do not use in an infinite while loop, as it will hold up the task
+int isDisplayUpdating(void) {
+    return (xEventGroupGetBits(dispEvents) & RTOS_DISP_EVENT_COMPLETE) == 0;
 }

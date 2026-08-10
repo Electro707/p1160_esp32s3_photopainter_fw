@@ -103,7 +103,7 @@ paths:
                   stat:
                     type: string
                     const: "I'm a teapot"
-  
+
   /mode:
     get:
       description: "Gets the current operational mode"
@@ -123,6 +123,7 @@ paths:
                     enum:
                       - "standby"
                       - "playlist"
+                      - "playlistLP"
                       - "error"
                   playlist:
                     type: object
@@ -252,7 +253,7 @@ paths:
           $ref: '#/components/responses/PostOKResponse'
         "400":
           $ref: '#/components/responses/PostErrorResponse'
-  
+
   /wifi/info:
     get:
       summary: "Gets the stored WiFi info and the current connection state"
@@ -324,7 +325,7 @@ paths:
       responses:
         "200":
           $ref: '#/components/responses/PostOKResponse'
-  
+
   /pmic:
     get:
       summary: "Gets power information, such as battery change, voltages, etc"
@@ -360,7 +361,7 @@ paths:
                   currLimited:
                     type: bool
                     description: "If currently is limited by the pmic"
-  
+
   /pmic/pwrOff:
     post:
       summary: "Send this to turn off the device. After this only a manual button press can wake the device up"
@@ -508,7 +509,7 @@ paths:
           $ref: '#/components/responses/PostErrorResponse'
         "500":
           $ref: '#/components/responses/PostErrorResponse'
-  
+
   /img/delete:
     post:
       summary: "To delete an image from the sd card"
@@ -533,7 +534,7 @@ paths:
           $ref: '#/components/responses/PostErrorResponse'
         "500":
           $ref: '#/components/responses/PostErrorResponse'
-  
+
   /img/playlist/add:
     post:
       description: "To add an image to the playlist"

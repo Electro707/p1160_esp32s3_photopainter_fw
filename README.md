@@ -25,9 +25,15 @@ This will be an opinionated firmware, with the philosophies in mind:
 The web API docs can be found in [docs/openapi.yaml](docs/openapi.yaml).
 
 # Web Interface
-A web interface is available to setup the device. For now it must be run from the host computer until I implement it to be ran on the esp32 natively.
+A web interface is available to configure the device, upload images, and monitor some statistics.
+It can be accessed either by running a local proxy, or by running the web on-device. For development, it is recommended to use the proxy for quicker updates.
 ![Webpage](.img/web_prev1.png)
 
+## On-Device Service
+To host the webpage on the ESP32, copy the contents of the `web` folder into a folder on the SD card named `WEB`\
+> TODO: Right now the method of updating the webpage content is manual. Implement some uploader to update the web files.
+
+## Local Proxy
 To run, inside the `web` folder run `run.py`. An argument of "sim" or "esp32" must be fed, the former simulates an esp32 for testing the webpage without the device, and "esp32" actually talks to the esp32, the script acting as a proxy. When using mode "esp32", an optional `-u` argument can be given for the device's URL.
 
 # ~~Unit Test~~ *Broken for Now*
@@ -58,7 +64,7 @@ The previous implementation of the pmic stuff was by the [XPowerLibs](https://gi
 - Low-Level driving of SPI
     - Turns out that using esp-idf's spi library with DMA, the thing sets up the linked list required for the DMA per transaction: `spi_master.c->spi_device_polling_start()->spi_new_trans()->s_spi_prepare_data()->s_spi_dma_prepare_data()`
     As well as the entire SPI transaction settings. That among other things like always checking if a transaction is valid.
-    I get it for a general purpose "any task can speak to spi" sort of setup and for a developer safe api, but given this is a controlled system it is a todo to just talk to the low-level drivers myself, as what it's doing is a bit much. Plus a learning opportunity for me. 
+    I get it for a general purpose "any task can speak to spi" sort of setup and for a developer safe api, but given this is a controlled system it is a todo to just talk to the low-level drivers myself, as what it's doing is a bit much. Plus a learning opportunity for me.
     This will be a last priority, as the saying goes "don't fix what ain't broken"
 
 # Contributing

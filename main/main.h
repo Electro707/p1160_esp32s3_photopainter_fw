@@ -12,7 +12,8 @@
 
 typedef enum{
     MODE_STANDBY,
-    MODE_IMAGE_PLAYLIST
+    MODE_IMAGE_PLAYLIST,
+    MODE_IMAGE_PLAYLIST_LP,     // low power version of playlist, goes into deep sleep mode
 }mode_e;
 
 typedef enum{
@@ -57,7 +58,18 @@ extern mode_e runMode;
  */
 setModeRet_e setMode(mode_e newMode);
 
-u32 dispTrigUpdate(void);
-bool isDisplayUpdating(void);
+/**
+ * Triggers a display refresh
+ *
+ * Returns non-zero if the display update was already happening when we triggered it
+ */
+int dispTrigUpdate(void);
+
+/**
+ *
+ */
+int isDisplayUpdating(void);
+
+void goDeepSleep(void);
 
 #endif
