@@ -23,9 +23,8 @@ static void getWebPath(const char *imgName, char *outName, u32 maxLen){
     snprintf(outName, maxLen, WEB_DIR "%s", imgName);
 }
 
-fSysRet initFs(void){
+void initFs(void){
     ff_diskio_register_sdmmc(0, &sdCard);
-    return FILE_SYS_RET_OK;
 }
 
 fSysRet mountFs(void){

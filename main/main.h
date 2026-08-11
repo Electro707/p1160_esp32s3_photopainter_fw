@@ -27,6 +27,7 @@ typedef enum{
     RET_SET_MODE_IMG_PL_NONE_SET,
     RET_SET_MODE_IMG_NO_IMG,
     RET_SET_MODE_ERR,
+    RET_SET_MODE_SLEEP,     // should be impossible
 }setModeRet_e;
 
 typedef struct{

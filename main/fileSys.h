@@ -31,10 +31,8 @@ extern u8 sdCardFrameBuff[DISP_FB_SIZE];
 
 /**
  * Initializes the file system
- *
- * Returns 0 on success, other values on failure
  */
-fSysRet initFs(void);
+void initFs(void);
 
 /**
  * Mounts an SD card and sets up the directory structure

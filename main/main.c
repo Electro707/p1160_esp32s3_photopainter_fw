@@ -50,11 +50,11 @@ pmicTelemetry pmicTelem;
 
 // the display updater task starter/handler
 TaskHandle_t dispTask_h;
+StaticEventGroup_t dispEvents_staticData;
 EventGroupHandle_t dispEvents;
 enum{
     RTOS_DISP_EVENT_COMPLETE = 0x01,    // set when we finish updating the display, cleared when we are using the display
 };
-StaticEventGroup_t dispEventsStaticData;
 
 TaskHandle_t pmicTelemTask_h;
 SemaphoreHandle_t pmicTelemetryMutex;
@@ -63,6 +63,8 @@ void taskTimerImagePlaylist(TimerHandle_t xTimer);
 void taskPmicTelemetry(void *args);
 void taskDispUpdate(void *args);
 int imagePlaylistLoad(void);
+void deepSleepDisplayUpdate(void);
+void waitForDisplay(TickType_t timeout);
 
 static const char *TAG = "main";
 
@@ -98,8 +100,8 @@ void mcuInit(void){
     gpio_conf.pull_up_en   = GPIO_PULLUP_ENABLE;        // enable pull-up for busy, shouldn't be really needed but alas...
     ESP_ERROR_CHECK(gpio_config(&gpio_conf));
 
-    // turn LEDs off by default
-    gpio_set_level(IO_DBG_LED1, LED_LVL_OFF);
+    // turn on the power LED on by default, other one can be off
+    gpio_set_level(IO_DBG_LED1, LED_LVL_ON);
     gpio_set_level(IO_DBG_LED2, LED_LVL_OFF);
 
     // init spi
@@ -180,12 +182,15 @@ void app_main(void){
     // load SD card
     stat = sdmmc_get_status(&sdCard);
     if(stat == ESP_OK){
-        stat = initFs();
-        mountFs();
+        initFs();
+        stat = mountFs();
+        if(stat){
+            ESP_LOGW(TAG, "Unable to mount file system, code %d", stat);
+        }
         // todo: do something with return value?
     } else {
         // todo: handle hot plug?
-        ESP_LOGW(TAG, "SD card status not good! %d", stat);
+        ESP_LOGW(TAG, "SD card status not good! code %d", stat);
     }
 
     delayMs(INITIAL_BOOT_SLEEP_DELAY);      // debug, remove when firmware is tested
@@ -197,16 +202,8 @@ void app_main(void){
     ESP_LOGI(TAG, "sleep source: %d", wakeSource);
     if(wakeSource == ESP_SLEEP_WAKEUP_TIMER){
         if(runMode == MODE_IMAGE_PLAYLIST_LP){
-            ESP_LOGI(TAG, "Booted up from low power while we have a playlist, load the next image and go back to sleep");
-            // put the next image up and bail instantly!
-            imagePlaylistLoad();
-
-            pmicEnableLDOs();
-            delayMs(100);            // some boot up time, todo: instrument
-            dispBoot();
-            dispUpdate();
-
-            goDeepSleep();
+            deepSleepDisplayUpdate();
+            return;         // never reached due to deep sleep
         }
     }
     else if(wakeSource == ESP_SLEEP_WAKEUP_EXT1){
@@ -232,7 +229,7 @@ void app_main(void){
     memset(&pmicTelem, 0, sizeof(pmicTelem));
     pmicTelemetryMutex = xSemaphoreCreateMutex();
 
-    dispEvents = xEventGroupCreateStatic(&dispEventsStaticData);
+    dispEvents = xEventGroupCreateStatic(&dispEvents_staticData);
     configASSERT( dispEvents );
 
     // create FreeRTOS tasks and timers
@@ -266,16 +263,16 @@ void app_main(void){
     // esp_deep_sleep_start();
 }
 
+/**
+ * Sets the device to sleep mode
+ * Can be worked up either by timer (if we are in playlist mode), or with the KEY button
+ */
 void goDeepSleep(void){
-    uint32_t n;
-
     ESP_LOGI(TAG, "Commanded to go to deep sleep");
     if(runMode == MODE_IMAGE_PLAYLIST_LP){
-        // enable timer
-        // todo: limit check
+        // with the internal 136kHz clock into the 48-bit RTC timer, we have...*pulls up confuser***...65 years of
         ESP_LOGI(TAG, "Setting timer to %d mS", imgPlaylist.period_ticks);      // debug
         esp_sleep_enable_timer_wakeup((uint64_t)imgPlaylist.period_ticks * 1000 * 1000 / configTICK_RATE_HZ);
-        // todo: setup RTC memory to store the last state
     }
     // always enable the boot button as a valid wakeup source
     // we must use EXT1 as the button is a pulldown, while EXT0 only supports when the IO goes high
@@ -284,25 +281,38 @@ void goDeepSleep(void){
     rtc_gpio_hold_en(IO_BUTTON);
     esp_sleep_enable_ext1_wakeup((1 << IO_BUTTON), ESP_EXT1_WAKEUP_ANY_LOW);
 
+    // turn LEDs off (unsure if needed, but are here nevertheless)
+    gpio_set_level(IO_DBG_LED1, LED_LVL_OFF);
+    gpio_set_level(IO_DBG_LED2, LED_LVL_OFF);
+
     // keep RTC enabled due to SRAM used
     esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
 
     // disable all LDOs and wait for I2C to finish operations
-    // todo: shutdown PMIC monitor task
-    // pmicDisableLDOsAll();
+    vTaskDelete(pmicTelemTask_h);
     i2c_master_bus_wait_all_done(i2cHandle, 100);
 
     // wait for display handler to finish
-    // ESP_LOGI(TAG, "Waiting for display to finish updating before going to low power mode");
-    // waitForDisplay(portMAX_DELAY);
+    ESP_LOGI(TAG, "Waiting for display to finish updating before going to low power mode");
+    waitForDisplay(portMAX_DELAY);
 
     ESP_LOGI(TAG, "Good night");
     GOOD_NIGHT();
 }
 
-void lowPowerDisplayUpdate(void){
+void deepSleepDisplayUpdate(void){
     // this is called when the display is to be updated due to a low power image cycle
     // just load the next image and bail
+    ESP_LOGI(TAG, "Booted up from low power while we have a playlist, load the next image and go back to sleep");
+    // put the next image up and bail instantly!
+    imagePlaylistLoad();
+
+    pmicEnableLDOs();
+    delayMs(100);            // some boot up time, todo: instrument
+    dispBoot();
+    dispUpdate();
+
+    goDeepSleep();
 }
 
 setModeRet_e setMode(mode_e newMode){
@@ -326,6 +336,11 @@ setModeRet_e setMode(mode_e newMode){
             if(sum == 0){
                 return RET_SET_MODE_IMG_PL_NONE_SET;
             }
+        }
+        // if we are in deep sleep mode, when we set the mode immediately jump to sleep
+        if(runMode == MODE_IMAGE_PLAYLIST_LP){
+            goDeepSleep();
+            return RET_SET_MODE_SLEEP;
         }
         imgPlaylist.currIdx = 0;
         xTimerChangePeriod(imgPlaylist.timerHandler, imgPlaylist.period_ticks, pdTICKS_TO_MS(100));
@@ -428,7 +443,7 @@ int imagePlaylistLoad(void){
 
 /**
  * A task that reads telemetry from the power IC
- * Reads every 2sec
+ * Reads every 5sec
  */
 void taskPmicTelemetry(void *args){
     for(EVER){
@@ -463,12 +478,6 @@ void taskDispUpdate(void *args){
         delayMs(100);            // some boot up time, todo: instrument
         dispBoot();
         dispUpdate();
-        // debug
-        // todo: is this the best place to put the device to deep sleep?
-        if(runMode == MODE_IMAGE_PLAYLIST_LP){
-            goDeepSleep();
-            return;
-        }
         pmicDisableLDOs();      // after we are done, shut down the display for power savings
 #endif
         esp_pm_lock_release(sleepLockHandle);       // we-allow sleep mode
